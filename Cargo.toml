@@ -1,0 +1,14 @@
+[package]
+name = "bam_tide"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bam2bigwig"
+path = "src/bin/bam2bigwig.rs"
+
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+bam = "*"
+
