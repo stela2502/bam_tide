@@ -1,4 +1,4 @@
-use bam_tide::bam_to_bedgraph;
+use bam_tide::bed_data;
 use clap::Parser;
 use clap::Command;
 
@@ -27,7 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Output BigWig: {}", args.bigwig);
     println!("Bin Width: {} bp", args.bin_width);
 
-    bam_to_bedgraph(&args.bam, &args.bigwig, args.bin_width)?;
+    let bed_data = bed_data::new( &args.bam, args.bin_width )?;
+    bed_data.bam_to_bigwig
+    write_bigwig(&args.bam, &args.bigwig, args.bin_width)?;
 
     println!("Conversion completed successfully.");
     Ok(())

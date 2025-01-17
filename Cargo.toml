@@ -11,4 +11,5 @@ path = "src/bin/bam2bigwig.rs"
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 bam = "*"
+bigtools = "0.5.4"
 
