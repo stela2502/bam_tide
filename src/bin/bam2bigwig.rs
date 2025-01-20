@@ -1,4 +1,4 @@
-use bam_tide::bed_data;
+use bam_tide::bed_data::BedData;
 use clap::Parser;
 use clap::Command;
 
@@ -12,11 +12,11 @@ struct Args {
 
     /// Output BigWig file.
     #[arg(short, long)]
-    bigwig: String,
+    outfile: String,
 
     /// Bin width for coverage calculation (default: 50bp).
     #[arg(short, long, default_value_t = 50)]
-    bin_width: usize,
+    width: usize,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,12 +24,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("BamTide CLI");
     println!("Processing BAM: {}", args.bam);
-    println!("Output BigWig: {}", args.bigwig);
-    println!("Bin Width: {} bp", args.bin_width);
+    println!("Output BigWig: {}", args.outfile);
+    println!("Bin Width: {} bp", args.width);
 
-    let bed_data = bed_data::new( &args.bam, args.bin_width )?;
-    bed_data.bam_to_bigwig
-    write_bigwig(&args.bam, &args.bigwig, args.bin_width)?;
+    let bed_data = BedData::new( &args.bam, args.width, 2 );
+
+    bed_data.write_bigwig( &args.outfile )?;
 
     println!("Conversion completed successfully.");
     Ok(())

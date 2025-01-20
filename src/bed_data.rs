@@ -2,24 +2,55 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Write};
 use bam::{BamReader, Record, Header, RecordReader};  // assuming bam crate for reading BAM files
+use tokio::runtime::Runtime;
+use std::thread::Builder;
 
-use bigtools::{BigWigWrite, ChromInfo};
+use bigtools::BigWigWrite;
+use bigtools::beddata::BedParserStreamingIterator;
+use std::path::Path;
+
+
+use crate::data_iter::DataIter;
+
+
+/// Represents a single value in a bigWig file
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "write", derive(Serialize, Deserialize))]
+pub struct Value {
+    pub start: u32,
+    pub end: u32,
+    pub value: f32,
+}
+
+impl Value{
+	pub fn flat(&self) -> ( u32, u32, f32) {
+		( self.start, self.end, self.value )
+	}
+}
 
 
 pub struct BedData {
-    genome_info: Vec<(String, usize, usize)>, // (chromosome name, length, bin offset)
-    coverage_data: Vec<u32>, // coverage data array for bins
-    bin_width: usize, // bin width for coverage
+    pub genome_info: Vec<(String, usize, usize)>, // (chromosome name, length, bin offset)
+    pub search: HashMap<String, usize>, // get id for chr
+    pub coverage_data: Vec<u32>, // coverage data array for bins
+    pub bin_width: usize, // bin width for coverage
+    pub threads: usize, // how many worker threads should we use here?
 }
 
 impl BedData {
 
     // Constructor to initialize a BedData instance
-    pub fn new(bam_file: &str , bin_width: usize) -> Self {
+    pub fn new(bam_file: &str , bin_width: usize, threads:usize) -> Self {
 
-    	let mut bam_reader = BamReader::from_path(&bam_file, 1).unwrap();
-	    let header = bam_reader.header().to_owned();
+    	let mut bam_reader = match BamReader::from_path(&bam_file, 1){
+    		Ok(f) => f,
+    		Err(e) => {
+    			panic!("We hit an erro in Bam file reading: {e:?}");
+    		}
+    	};
+	    let header = bam_reader.header().clone();
 	    let genome_info:Vec<(String, usize, usize)> = Self::create_ref_id_to_name_map( &header,bin_width );
+	    let search = Self::genome_info_to_search( &genome_info );
 
 	    let num_bins = genome_info
             .iter()
@@ -35,7 +66,10 @@ impl BedData {
 	    loop {
 	        match bam_reader.read_into(&mut record) {
 	            Ok(true) => {},
-	            Ok(false) => break,
+	            Ok(false) => {
+	            	println!("bam file file read completely");
+	               	break
+	              },
 	            Err(e) => panic!("{}", e),
 	        }
 	        let chrom_idx:usize = record.ref_id().try_into().unwrap();
@@ -43,13 +77,16 @@ impl BedData {
 
 	        let start:usize = record.start().try_into().unwrap();
 	        let end = start + record.sequence().raw().len();
-	        println!("Trying start to end {start} to {end} length {}", {end - start});
 
 	        // Update bins
 	        for pos in (start..end).step_by(bin_width) {
-	            if chrom_length < &pos {
+	        	//println!("Trying to add {chrom_name}:{pos} - 1");
+	            if chrom_length >= &pos {
 	                let index= chrom_offset+ pos / bin_width;
 	                coverage_data[index] += 1;
+	                //println!("Adding a one to the data in index {index}");
+	            }else {
+	            	//println!( "pos {pos} is outside of the chromsome?! {chrom_length}")
 	            }
 	            
 	        }
@@ -57,9 +94,19 @@ impl BedData {
 
         BedData {
             genome_info,
+            search,
             coverage_data,
             bin_width,
+            threads,
         }
+    }
+
+    pub fn genome_info_to_search(genome_info: &Vec< (String, usize, usize) > ) -> HashMap<String, usize> {
+        genome_info
+            .iter()
+            .enumerate()
+            .map(|(index, (name, _, _))| (name.clone(), index))
+            .collect()
     }
 
     /// Create a mapping of reference ID to reference name, chromosome length, and bin offset.
@@ -89,9 +136,33 @@ impl BedData {
 	        .collect()
 	}
 
+	pub fn id_for_chr_start( &self, chr:&str, start:usize ) -> Option<usize> {
+		match self.search.get( chr ){
+			Some(id) => {
+				// Some ( offset + id)
+				Some( self.genome_info[*id].2 + start / self.bin_width )
+			},
+			None => None
+		}
+	}
+
+	/// get the chromosme name for and value id.
+	/// This checks the offsets of all chromosomes and returns None if the id exeeds the range.
+	pub fn current_chr_for_id(&self, id:usize) -> Option<( String, usize, usize)> {
+		for ( chr, length, offset ) in &self.genome_info{
+			if id >= *offset &&  (id - offset) * self.bin_width < *length {
+				return Some( (chr.clone(), *length, *offset) );
+			}
+		}
+		// the id did not map to any entry here!
+		return None
+	}
+
+
+
 
 	/// Write the coverage data to a BEDGraph file.
-	fn write_bedgraph(
+	pub fn write_bedgraph(
 		&self,
 	    file_path: &str, // Output file path
 	) -> std::io::Result<()> {
@@ -134,93 +205,30 @@ impl BedData {
 	    Ok(())
 	}
 
+	pub fn write_bigwig( &self, file: &str) -> Result<(),String>{	
 
-	fn write_bigwig_data(
-		&self,
-	    file: &mut File,
-	) -> Result<(), io::Error> {
-	    // Iterate over the genome info and coverage data for each chromosome
-	    let mut bin_start: usize = 0;
-	    let mut bin_end: usize = 0;
-	    let chr_sizes : HashMap<String, u32> =  self.genome_info
-	    	.iter()
-	    	.map(|(name, length, _)| (name.clone(), *length as u32)) // Clone the name and cast the length to u32
-    		.collect(); // Collect the result into a HashMap
-		let bw_writer = BigWigWrite::new(file, chr_sizes )?;
+		let runtime = tokio::runtime::Builder::new_multi_thread()
+		     .worker_threads( self.threads )
+		    .build()
+		     .expect("Unable to create runtime.");
 
-	    for (chrom_index, (chrom_name, chrom_length, bin_offset)) in self.genome_info.iter().enumerate() {
-	        // Create a vector to store data for this chromosome
-	        let mut chrom_data: Vec<u32> = Vec::new();
-	        
-	        for bin_index in 0..(chrom_length / self.bin_width) {
-	            bin_start = bin_index * self.bin_width;
-	            bin_end = (bin_index + 1) * self.bin_width;
+		let iter = DataIter::new( self );
+		let data = BedParserStreamingIterator::wrap_infallible_iter(iter, true);
 
-	            if bin_end > *chrom_length {
-	                bin_end = *chrom_length;
-	            }
+		let chrom_map: HashMap<String, u32> = self.genome_info.iter().map(|(chrom, len, _)| (chrom.clone(), *len as u32)).collect();
 
-	            // Get the coverage value for this bin
-	            let coverage_value = self.coverage_data.get(bin_offset + bin_index).unwrap_or(&0);
+		let outfile = Path::new(file);
 
-	            // Store the coverage value (you may want to use a different data type for BigWig)
-	            chrom_data.push(*coverage_value);
-	        }
+		// Create the BigWig writer
+        let outb = BigWigWrite::create_file(outfile, chrom_map)
+            .map_err(|e| format!("Failed to create BigWig file: {}", e))?;
 
-	        // Write the chromosome's data into BigWig format
+        // Write data using the runtime
+        outb.write(data, runtime)
+            .map_err(|e| format!("Failed to write BigWig file: {}", e))?;
 
-	        
-
-	        bw_writer.write_data(chrom_name, &chrom_data)?;
-
-	        // Reset the vector for the next chromosome
-	        chrom_data.clear();
-	    }
-
-	    Ok(())
+        Ok(())
 	}
 
 
-	fn write_bigwig_header(
-		&self,
-	    file: &mut File,
-	) -> Result<(), io::Error > {
-	    // Create a list of ChromInfo to hold chromosome names and their sizes
-	    let chrom_info: Vec<ChromInfo> = self.genome_info.iter().map(|(name, length, _)| {
-	        ChromInfo {
-	            name: name.clone(),
-	            length: *length as u32,  // Length in u32 (as required for BigWig format)
-	        }
-	    }).collect();
-
-	    // Create the BigWig writer with the header
-	    let bw_writer = BigWigWrite::new(file, &chrom_info, self.bin_width as u32)?;
-
-	    // Write the header (metadata about chromosomes and bins)
-	    bw_writer.write_header()?;
-
-	    Ok(())
-	}
-
-	pub fn write_bigwig(&self, bigwig_file:&str ) -> Result<(),  io::Error>{
-		let mut file = File::create( bigwig_file )?;
-	    // Write the header
-	    self.write_bigwig_header( &mut file )?;
-
-	    // Write the coverage data
-	    self.write_bigwig_data(&mut file )?;
-	}
-
-	pub fn bam_to_bigwig(
-	    bam_file: &str,
-	    bigwig_file: &str,
-	    bin_width: usize,
-	) -> Result<(),  io::Error> {
-	    // Open BAM file and create a reader
-	    let me = Self::new( bam_file, bin_width );
-	    me.write_bigwig( bigwig_file );
-
-
-	    Ok(())
-	}
 }
