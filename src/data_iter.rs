@@ -42,7 +42,8 @@ impl<'a> Iterator for DataIter<'a> {
         let mut rel_bin = self.current_bin - offset;
         let start:u32 = (rel_bin * self.data.bin_width).try_into().unwrap();
         let mut skipped = false;
-        while self.data.coverage_data[self.current_bin] == 0{
+        let val = self.data.coverage_data[self.current_bin];
+        while self.data.coverage_data[self.current_bin] == val{
           self.current_bin +=1;
           rel_bin +=1;
           skipped = true;
@@ -67,7 +68,7 @@ impl<'a> Iterator for DataIter<'a> {
               .min(*size)
               .try_into()
               .unwrap(),
-            value: self.data.coverage_data[self.current_bin] as f32,
+            value: val as f32,
           },
         );
 
