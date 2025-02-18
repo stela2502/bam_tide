@@ -1,21 +1,29 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Write};
-use bam::{BamReader, Record, Header, RecordReader};  // assuming bam crate for reading BAM files
-use tokio::runtime::Runtime;
-use std::thread::Builder;
+use std::io::{Write};
+//use tokio::runtime::Runtime;
+//use std::thread::Builder;
 
 use bigtools::BigWigWrite;
 use bigtools::beddata::BedParserStreamingIterator;
 use std::path::Path;
 
+use rust_htslib::bam::{Reader,Read};
+use rust_htslib::bam::Header;
 
+use crate::gtf_logics::{ create_ref_id_to_name_hashmap, AnalysisType };
+use crate::read_data::ReadData;
 use crate::data_iter::DataIter;
+
+use rustody::genes_mapper::cigar::Cigar;
+
+//const BUFFER_SIZE: usize = 1_000_000;
+use clap::ValueEnum;
 
 
 /// Represents a single value in a bigWig file
 #[derive(Copy, Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "write", derive(Serialize, Deserialize))]
+//#[cfg_attr(feature = "write", derive(Serialize, Deserialize))]
 pub struct Value {
     pub start: u32,
     pub end: u32,
@@ -26,6 +34,13 @@ impl Value{
 	pub fn flat(&self) -> ( u32, u32, f32) {
 		( self.start, self.end, self.value )
 	}
+}
+
+
+/// The 'supported' normalization options
+#[derive(ValueEnum, Clone, Debug)]
+pub enum Normalize {
+    Not,
 }
 
 
@@ -40,17 +55,26 @@ pub struct BedData {
 impl BedData {
 
     // Constructor to initialize a BedData instance
-    pub fn new(bam_file: &str , bin_width: usize, threads:usize) -> Self {
+    pub fn new(bam_file: &str , bin_width: usize, threads:usize, analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2] ) -> Self {
 
-    	let mut bam_reader = match BamReader::from_path(&bam_file, 1){
-    		Ok(f) => f,
-    		Err(e) => {
-    			panic!("We hit an erro in Bam file reading: {e:?}");
-    		}
-    	};
-	    let header = bam_reader.header().clone();
-	    let genome_info:Vec<(String, usize, usize)> = Self::create_ref_id_to_name_map( &header,bin_width );
+
+	    let mut reader = match Reader::from_path(bam_file) {
+	    	Ok(r) => r,
+	    	Err(e) => panic!("Error opening BAM file: {}", e),
+	    };
+
+	    let cigar = Cigar::new( "" );
+
+	    let header = Header::from_template(reader.header());
+    	// (chr name, length, offset)
+	    let genome_info:Vec<(String, usize, usize)> = Self::create_ref_id_to_name_vec( &header,bin_width );
+
+	    // i32 id to chr name
+	    let ref_id_to_name = create_ref_id_to_name_hashmap(  &header );
+
 	    let search = Self::genome_info_to_search( &genome_info );
+
+	    let mut singlets = HashMap::<String, ReadData>::new();
 
 	    let num_bins = genome_info
             .iter()
@@ -59,37 +83,98 @@ impl BedData {
 
 	    let mut coverage_data = vec![0u32; num_bins];
 
-	    let mut record = bam::Record::new();
-	    let mut last_start = 0; 
+	    let mut lines = 0;
 
 	    // Process BAM records
-	    loop {
-	        match bam_reader.read_into(&mut record) {
-	            Ok(true) => {},
-	            Ok(false) => {
-	            	println!("bam file file read completely");
-	               	break
-	              },
-	            Err(e) => panic!("{}", e),
-	        }
-	        let chrom_idx:usize = record.ref_id().try_into().unwrap();
-	        let (chrom_name, chrom_length, chrom_offset) = &genome_info[chrom_idx];
+	    for r in reader.records() {
+	        // Read a record from BAM file
+	        let record = match r {
+	            Ok(r) => r,
+	            Err(e) => panic!("I could not collect a read: {e:?}"),
+	        };
+			// Choose the correct function to extract the data based on the AnalysisType
+	        let data_tuple = match *analysis_type {
+	            AnalysisType::SingleCell => ReadData::from_single_cell(&record, &ref_id_to_name, &cell_tag, &umi_tag),
+	            AnalysisType::Bulk => ReadData::from_bulk(&record, &ref_id_to_name, &umi_tag, lines, "1"),
+	        };
 
-	        let start:usize = record.start().try_into().unwrap();
-	        let end = start + record.sequence().raw().len();
+	        // Here we really only need start and end at the moment.
+	        let region = match data_tuple {
+	            Ok(ref res) => {
+	                let qname = &res.0; // Cell ID or read name as key
+	                let read_data = &res.1;
 
-	        // Update bins
-	        for pos in (start..end).step_by(bin_width) {
-	        	//println!("Trying to add {chrom_name}:{pos} - 1");
-	            if chrom_length >= &pos {
-	                let index= chrom_offset+ pos / bin_width;
-	                coverage_data[index] += 1;
-	                //println!("Adding a one to the data in index {index}");
-	            }else {
-	            	//println!( "pos {pos} is outside of the chromsome?! {chrom_length}")
+	                if read_data.is("paired") {
+	                    match singlets.remove(qname) {
+	                        Some(first_read) => {
+	                            // Mate found! Process the pair
+	                            //println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
+	                            if first_read.chromosome != read_data.chromosome {
+	                            	eprintln!( "chr missmatch!\n{}\n{}",first_read, read_data );
+	                            	None
+	                            }
+	                            // add a +1 to the whole region.
+	                            else if first_read.start < read_data.start {
+	                            	Some((first_read.start, first_read.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ), )
+	                            }else {
+	                            	Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &first_read.cigar ).1 as i32 ))
+	                            }
+	                        }
+	                        None => {
+	                            // Handle orphaned reads (mate unmapped)
+	                            if read_data.is("mate_unmapped") {
+	                                //println!("Orphaned read (mate unmapped): {:?}", read_data);
+	                                // Process it as a single read
+	                                Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
+	                            } else {
+	                                // No mate found, store this read for future pairing
+	                                singlets.insert(qname.to_string(), read_data.clone());
+	                                //println!("Storing read for future pairing: {:?}", read_data);
+	                                None
+	                            }
+	                        }
+	                    }
+	                } else {
+	                    // Unpaired read (not part of a pair at all)
+	                    //println!("Unpaired read: {}", read_data);
+	                    Some ((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
+	                }
 	            }
-	            
-	        }
+	            Err("missing_Chromosome") => {
+	                eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
+	                None
+	            }
+	            Err(_err) => {
+	                //mapping_info.report(err);
+	                None
+	            }
+	        };
+
+		    /*if lines % BUFFER_SIZE == 0 {
+		        pb.set_message(format!("{} million reads processed", lines / BUFFER_SIZE));
+		        pb.inc(1);
+		    }*/
+
+		    if let Some( (start, end) ) = region {
+
+		    	let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
+				//println!("I am filling {}:{}-{} with +1",chrom_name, start, end );
+			    // Update bins
+		        for pos in (start ..end).step_by(bin_width) {
+		        	//println!("Trying to add {chrom_name}:{pos} - 1");
+		            if chrom_length >= &(pos as usize) {
+		                let index= chrom_offset+ pos as usize / bin_width;
+		                coverage_data[index] += 1;
+		                //println!("Adding a one to the data in index {index}");
+		            }else {
+		            	panic!( "pos {pos} is outside of the chromsome?! {chrom_length}")
+		            }
+		            
+		        }
+		    }
+		    
+	 		lines += 1;
+
 	    }
 
         BedData {
@@ -101,6 +186,16 @@ impl BedData {
         }
     }
 
+    /// Here we have implemented all the normalization features.
+    pub fn normalize(&mut self, by: &Normalize ) {
+    	match by {
+    		Normalize::Not => {
+    			// do just notthing ;-)
+    		},
+    	}
+    }
+
+    /// Get the hashMap to locate the position of the chromosome in the annotation table
     pub fn genome_info_to_search(genome_info: &Vec< (String, usize, usize) > ) -> HashMap<String, usize> {
         genome_info
             .iter()
@@ -111,31 +206,38 @@ impl BedData {
 
     /// Create a mapping of reference ID to reference name, chromosome length, and bin offset.
 	/// `bin_width` is the size of each bin.
-	fn create_ref_id_to_name_map( header_view: &Header, bin_width: usize) -> Vec<(String, usize, usize)> {
-	    let reference_names = header_view.reference_names();
-	    let reference_lengths = header_view.reference_lengths();
+	/// returns a vector with (chromsome name, chr length, chr offset - for this chromosome )
+	/// later called "annotation table"
+	pub fn create_ref_id_to_name_vec( header: &Header, bin_width: usize) -> Vec<(String, usize, usize)> {
 
-	    let mut total_bins = 0; // This will store the cumulative bin count (offset)
+		let header_map = header.to_hashmap();
+		let mut ref_id_to_name = Vec::with_capacity(30);
+		let mut total_bins = 0; 
 
-	    // Zip the reference names and lengths together and compute the bin offsets
-	    reference_names
-	        .iter()
-	        .zip(reference_lengths.iter())
-	        .map(|(name, &length)| {
-	            // Calculate number of bins for this chromosome
-	            let bins = (length as usize + bin_width - 1) / bin_width;
+		if let Some(reference_info) = header_map.get("SQ") {
+	        for record in reference_info {
+	            if let Some(length) = record.get("LN") {
+	                // The "LN" tag holds the length of the chromosome
+	                if let Ok(length_int) = length.parse::<usize>() {
+	                    if let Some(name) = record.get("SN") {
+	                    	// Calculate number of bins for this chromosome
+	                    	let bins = (length_int as usize + bin_width - 1) / bin_width;
 
-	            // Create the tuple: (chromosome name, length, bin offset)
-	            let result = (name.to_string(), length as usize, total_bins);
+	                    	// Create the tuple: (chromosome name, length, bin offset)
+	            			let result = (name.to_string(), length_int as usize, total_bins);
 
-	            // Update the total_bins to include this chromosome's bins
-	            total_bins += bins;
+	            			total_bins += bins;
 
-	            result
-	        })
-	        .collect()
+	                        ref_id_to_name.push(result);
+	                    }
+	                }
+	            }
+	        }
+	    }
+	    ref_id_to_name
 	}
 
+	/// an example of how to calculate the id from the chromosome + position
 	pub fn id_for_chr_start( &self, chr:&str, start:usize ) -> Option<usize> {
 		match self.search.get( chr ){
 			Some(id) => {
@@ -146,7 +248,6 @@ impl BedData {
 		}
 	}
 
-	/// get the chromosme name for and value id.
 	/// This checks the offsets of all chromosomes and returns None if the id exeeds the range.
 	pub fn current_chr_for_id(&self, id:usize) -> Option<( String, usize, usize)> {
 		for ( chr, length, offset ) in &self.genome_info{
@@ -170,8 +271,9 @@ impl BedData {
 	    let mut file = File::create(file_path)?;
 
 	    // Iterate over the genome info and coverage data
-	    let mut bin_start: usize = 0; // Start position of each bin
-	    for (chrom_index, (chrom_name, chrom_length, bin_offset)) in self.genome_info.iter().enumerate() {
+	    let mut bin_start: usize; // Start position of each bin
+	    for (_chrom_index, (chrom_name, chrom_length, bin_offset)) in self.genome_info.iter().enumerate() {
+	    	#[allow(unused_assignments)]
 	        let mut bin_end = 0; // End position of each bin
 	        
 	        // Iterate through the coverage data for the current chromosome

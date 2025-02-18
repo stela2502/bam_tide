@@ -10,7 +10,7 @@ pub struct DataIter<'a> {
     pub data: &'a BedData,
     /// the pointer to the BedData::coverage_data id
     pub current_bin: usize,
-    /// the current chromosme name and offset for that chromosome
+    /// the current chromosome name and offset for that chromosome
     pub current_chr: Option<( String, usize, usize )>, 
 }
 
