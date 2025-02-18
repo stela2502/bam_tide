@@ -156,18 +156,21 @@ impl BedData {
 		    }*/
 
 		    if let Some( (start, end) ) = region {
+		    	let start_window = start / 50;
+    			let end_window = end / 50;
 
 		    	let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
 				//println!("I am filling {}:{}-{} with +1",chrom_name, start, end );
 			    // Update bins
-		        for pos in (start ..end).step_by(bin_width) {
+
+		        for id in start_window..=end_window {
 		        	//println!("Trying to add {chrom_name}:{pos} - 1");
-		            if chrom_length >= &(pos as usize) {
-		                let index= chrom_offset+ pos as usize / bin_width;
+		            if chrom_length / bin_width - chrom_offset  >= id as usize {
+		                let index= chrom_offset+ id as usize;
 		                coverage_data[index] += 1;
 		                //println!("Adding a one to the data in index {index}");
 		            }else {
-		            	panic!( "pos {pos} is outside of the chromsome?! {chrom_length}")
+		            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * bin_width )
 		            }
 		            
 		        }
