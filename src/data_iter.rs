@@ -39,13 +39,30 @@ impl<'a> Iterator for DataIter<'a> {
     match &self.current_chr {
       Some((chr, size, offset)) => {
 
-        let rel_bin = self.current_bin - offset;
-
+        let mut rel_bin = self.current_bin - offset;
+        let start:u32 = (rel_bin * self.data.bin_width).try_into().unwrap();
+        let mut skipped = false;
+        while self.data.coverage_data[self.current_bin] == 0{
+          self.current_bin +=1;
+          rel_bin +=1;
+          skipped = true;
+          if (rel_bin * self.data.bin_width) >= *size {
+            // shit - we overreached out chr!
+            // chould not be an issue as we flip back one in the next step
+            break;
+          }
+        }
+        if skipped {
+          // we need to report the last zero!
+          self.current_bin -=1;
+        }
+       
+        rel_bin = self.current_bin - offset;
         // Create the return value based on current values
         let ret = (
           chr.to_string(),
           bigtools::Value {
-            start: (rel_bin * self.data.bin_width).try_into().unwrap(),
+            start: start,
             end: (rel_bin * self.data.bin_width + self.data.bin_width)
               .min(*size)
               .try_into()
