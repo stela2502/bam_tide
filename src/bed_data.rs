@@ -156,8 +156,8 @@ impl BedData {
 		    }*/
 
 		    if let Some( (start, end) ) = region {
-		    	let start_window = start / 50;
-    			let end_window = end / 50;
+		    	let start_window = (start +1) / 50;
+    			let end_window = (end +1 )/ 50;
 
 		    	let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
 				//println!("I am filling {}:{}-{} with +1",chrom_name, start, end );
