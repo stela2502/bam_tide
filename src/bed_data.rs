@@ -141,7 +141,7 @@ impl BedData {
 	                }
 	            }
 	            Err("missing_Chromosome") => {
-	                eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
+	                //eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
 	                None
 	            }
 	            Err(_err) => {
