@@ -4,7 +4,7 @@ use bam_tide::gtf_logics::{ AnalysisType };
 
 
 
-/// A command-line tool for converting BAM coverage data to BigWig format.
+/// A command-line tool for converting BAM coverage data to BedGraph format.
 #[derive(Parser, Debug)]
 #[clap(version = "0.0.1", author = "Stefan L. <stefan.lang@med.lu.se>")]
 struct Args {
