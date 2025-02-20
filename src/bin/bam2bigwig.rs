@@ -46,7 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let umi_tag: [u8; 2] = args.umi_tag.unwrap_or_else(|| "UB".to_string()).into_bytes().try_into().expect("umi-tag must be exactly 2 chars long");
     let cell_tag: [u8; 2] = args.cell_tag.unwrap_or_else(|| "CB".to_string()).into_bytes().try_into().expect("umi-tag must be exactly 2 chars long");
 
-    let mut bed_data = BedData::new( &args.bam, args.width, 2, &args.analysis_type, &cell_tag, &umi_tag );
+    let add_introns = false;
+    let mut bed_data = BedData::new( &args.bam, args.width, 2, &args.analysis_type, &cell_tag, &umi_tag, add_introns);
 
     bed_data.normalize( &args.normalize );
 

@@ -73,7 +73,7 @@ pub struct BedData {
 impl BedData {
 
     // Constructor to initialize a BedData instance
-    pub fn new(bam_file: &str , bin_width: usize, threads:usize, analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2] ) -> Self {
+    pub fn new(bam_file: &str , bin_width: usize, threads:usize, analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool ) -> Self {
 
 
 	    let mut reader = match Reader::from_path(bam_file) {
@@ -118,7 +118,7 @@ impl BedData {
 	        };
 
 	        // Here we really only need start and end at the moment.
-	        let region = match data_tuple {
+	        let region: Option<Vec<(usize, usize)>> = match data_tuple {
 	            Ok(ref res) => {
 	                let qname = &res.0; // Cell ID or read name as key
 	                let read_data = &res.1;
@@ -131,14 +131,26 @@ impl BedData {
 	                            println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
 	                            if first_read.chromosome != read_data.chromosome {
 	                            	eprintln!( "chr missmatch!\n{}\n{}",first_read, read_data );
-	                            	None
+	                            	break
 	                            }
+
+	                            let mut covered_regions = Vec::new();
+
+	                            let first_read_regions = cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start, add_introns );
+                        		let second_read_regions = cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns);
+
+								covered_regions.extend(first_read_regions);
+                        		covered_regions.extend(second_read_regions);
+
+                        		Some(covered_regions)
+                        		/*
 	                            // add a +1 to the whole region.
 	                            else if first_read.start < read_data.start {
 	                            	Some((first_read.start, first_read.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ), )
 	                            }else {
 	                            	Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &first_read.cigar ).1 as i32 ))
-	                            }
+	                            }*/
+
 	                        }
 	                        None => {
 	                            // Handle orphaned reads (mate unmapped)
@@ -146,7 +158,10 @@ impl BedData {
 	                                #[cfg(debug_assertions)]
 	                                println!("Orphaned read (mate unmapped): {:?}", read_data);
 	                                // Process it as a single read
-	                                Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
+		 							
+	                        		Some (cigar.read_on_database_matching_positions(&read_data.cigar, read_data.start, add_introns))
+
+	                                // Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
 	                            } else {
 	                                // No mate found, store this read for future pairing
 	                                singlets.insert(qname.to_string(), read_data.clone());
@@ -160,7 +175,9 @@ impl BedData {
 	                    // Unpaired read (not part of a pair at all)
 	                    #[cfg(debug_assertions)]
 	                    println!("Unpaired read: {}", read_data);
-	                    Some ((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
+
+                        Some (cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns ))
+                        //Some ((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
 	                }
 	            }
 	            Err("missing_Chromosome") => {
@@ -178,17 +195,52 @@ impl BedData {
 		        pb.inc(1);
 		    }*/
 
-		    if let Some( (start, end) ) = region {
-		    	let start_window = (start as usize +1) / 50;
-    			let end_window = (end as usize +1 )/ 50;
+		    if let Some(vec) = region {
+		    	//println!("I got {} regions to process!", vec.len());
+		    	for (start, end) in vec {
+		    		let start_window = (start) / bin_width;
+    				let end_window = (end )/ bin_width;
+    				nreads +=1;
 
-    			nreads +=1;
+    				let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
 
-		    	let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
-				//println!("I am filling {}:{}-{} with +1",chrom_name, start, end );
-			    // Update bins
+    				for id in start_window..=end_window {
+			        	#[cfg(debug_assertions)]
+			        	println!("add to {chrom_name}:{} - +50", id* bin_width );
+			            if chrom_length / bin_width >= id {
+			                let index= chrom_offset+ id;
+			                coverage_data[index] += 1.0;
+			                //println!("Adding a one to the data in index {index}");
+			            }else {
+			            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * bin_width )
+			            }
+			            
+			        }
 
-		        for id in start_window..=end_window {
+
+		    	}
+		    }
+
+	 		lines += 1;
+	    }
+	    // clean up singlets
+	    #[cfg(debug_assertions)]
+	    println!( "clean up {} still still unpaired reads", singlets.len());
+	    for region in &singlets {
+
+	    	for (start, end) in cigar.read_on_database_matching_positions( &region.1.cigar, region.1.start, add_introns ){
+				let start_window = (start +1) / bin_width;
+				let end_window = (end +1 )/ bin_width;
+				nreads +=1;
+
+				let (chrom_name, chrom_length, chrom_offset) = match search.get ( &region.1.chromosome){
+					Some(ret) => &genome_info[*ret],
+					None => continue,
+				};
+
+				nreads +=1;
+
+				for id in start_window..=end_window {
 		        	#[cfg(debug_assertions)]
 		        	println!("add to {chrom_name}:{} - +50", id* bin_width );
 		            if chrom_length / bin_width >= id {
@@ -200,39 +252,11 @@ impl BedData {
 		            }
 		            
 		        }
-		    }
-		    
-	 		lines += 1;
-
-	    }
-	    // clean up singlets
-	    #[cfg(debug_assertions)]
-	    println!( "clean up {} still still unpaired reads", singlets.len());
-	    for region in &singlets {
-	    	let (start, end) = (region.1.start, region.1.start + cigar.calculate_covered_nucleotides( &region.1.cigar ).1 as i32 );
-			let start_window = (start as usize +1) / 50;
-			let end_window = (end as usize +1 )/ 50;
-			let (chrom_name, chrom_length, chrom_offset) = match search.get ( &region.1.chromosome){
-				Some(ret) => &genome_info[*ret],
-				None => continue,
-			} ;
-			nreads +=1;
-
-			#[cfg(debug_assertions)]
-            println!("Orphaned read: {}\t{}", region.0, region.1 );
-			for id in start_window..=end_window {
-	        	//println!("Trying to add {chrom_name}:{pos} - 1");
-	            if chrom_length / bin_width >= id {
-	                let index= chrom_offset+ id;
-	                coverage_data[index] += 1.0;
-	                //println!("Adding a one to the data in index {index}");
-	            }else {
-	            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * bin_width )
-	            }
-	            
-	        }
+	    	}
+	    	lines +=1;
 	    }
 		
+		//panic!("Finished with parsing the file");
 
         BedData {
             genome_info,
@@ -373,39 +397,6 @@ impl BedData {
 	            values.0,   // Chromosome name
 	            values.1.start, values.1.end, values.1.value
 	        ).unwrap();
-	    }
-	    // Iterate over the genome info and coverage data
-	    let mut bin_start: usize; // Start position of each bin
-	    for (_chrom_index, (chrom_name, chrom_length, bin_offset)) in self.genome_info.iter().enumerate() {
-	    	#[allow(unused_assignments)]
-	        let mut bin_end = 0; // End position of each bin
-	        
-	        // Iterate through the coverage data for the current chromosome
-	        for bin_index in 0..(chrom_length / self.bin_width) {
-	            // Calculate start and end positions for each bin
-	            bin_start = bin_index * self.bin_width;
-	            bin_end = (bin_index + 1) * self.bin_width;
-
-	            if bin_end > *chrom_length {
-	                bin_end = *chrom_length; // Adjust for last bin that may not fill up to full width
-	            }
-
-	            // Get the coverage value for this bin (you'll need to map the correct coverage)
-	            let coverage_value = self.coverage_data.get(bin_offset + bin_index).unwrap_or(&0.0);
-
-	            // Write to the BedGraph file
-	            if *coverage_value > 0.0 {
-	                writeln!(
-	                    file,
-	                    "{}\t{}\t{}\t{}",
-	                    chrom_name,   // Chromosome name
-	                    bin_start,    // Start position (0-based)
-	                    bin_end,      // End position (1-based)
-	                    coverage_value // Coverage value
-	                ).unwrap();
-	            }
-	            
-	        }
 	    }
 
 	    Ok(())

@@ -1822,7 +1822,7 @@ dependencies = [
 [[package]]
 name = "rustody"
 version = "2.2.4"
-source = "git+https://github.com/stela2502/Rustody?branch=main2#70c67c7868f3806b6f7797704ee8cbd86d51c7d2"
+source = "git+https://github.com/stela2502/Rustody?branch=main2#59d953aedf039af34441074a7384a95752e26b4e"
 dependencies = [
  "ahash",
  "anyhow",

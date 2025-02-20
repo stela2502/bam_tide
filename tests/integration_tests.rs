@@ -9,6 +9,7 @@ use bam_tide::bed_data::BedData;
 use bam_tide::gtf_logics::{AnalysisType};
 
 #[test]
+
 fn test_bam_to_bigwig() {
     let bam_file = "testData/test.bam"; // Replace with a small BAM test file
     let bigwig_file = "testData/output/test.wig";
@@ -24,7 +25,8 @@ fn test_bam_to_bigwig() {
     }
 
     // Run the function
-    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No" );
+    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false );
+
     let result = BedData::write_bedgraph( &data, bigwig_file );
 
     // Assert success
@@ -52,7 +54,7 @@ fn test_bam_to_bedgraph() {
     }
 
     // Run the function
-    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No" );
+    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false );
     let result = BedData::write_bedgraph( &data, bg_file );
 
     // Assert success
@@ -70,9 +72,9 @@ fn test_bam_to_bedgraph() {
         ["chr1".to_string(), "14500".to_string(), "14550".to_string(), "8".to_string()],
         ["chr1".to_string(), "14550".to_string(), "14600".to_string(), "11".to_string()],
         ["chr1".to_string(), "14600".to_string(), "14650".to_string(), "10".to_string()],
-        ["chr1".to_string(), "14650".to_string(), "14700".to_string(), "5".to_string()],
-        ["chr1".to_string(), "14700".to_string(), "14850".to_string(), "2".to_string()],
-        ["chr1".to_string(), "14850".to_string(), "16700".to_string(), "1".to_string()],
+        ["chr1".to_string(), "14650".to_string(), "14700".to_string(), "4".to_string()],
+        ["chr1".to_string(), "14700".to_string(), "14850".to_string(), "1".to_string()],
+        ["chr1".to_string(), "14850".to_string(), "16600".to_string(), "0".to_string()],
     ];
     match read_tsv_to_vec( bg_file ) {
         Ok(data) => {
