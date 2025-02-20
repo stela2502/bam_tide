@@ -20,6 +20,7 @@ use rustody::genes_mapper::cigar::Cigar;
 //const BUFFER_SIZE: usize = 1_000_000;
 use clap::ValueEnum;
 
+use rayon::prelude::*;
 
 /// Represents a single value in a bigWig file
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -40,16 +41,33 @@ impl Value{
 /// The 'supported' normalization options
 #[derive(ValueEnum, Clone, Debug)]
 pub enum Normalize {
+	// just collect - no normalization whatsoever
     Not,
+    // Reads Per Kilobase per Million mapped reads;
+    // number of reads per bin / (number of mapped reads (in millions) * bin length (kb))
+    Rpkm,
+    // Counts Per Million mapped reads
+    // number of reads per bin / number of mapped reads (in millions)
+    Cpm,
+    // Bins Per Million mapped reads
+    // number of reads per bin / sum of all reads per bin (in millions)
+    Bpm,
+    // reads per genomic content (1x normalization)
+    // number of reads per bin / scaling factor for 1x average coverage.
+    // This scaling factor, in turn, is determined from the sequencing depth: 
+    // (total number of mapped reads * fragment length) / effective genome size. The scaling factor used is the inverse of
+    // the sequencing depth computed for the sample to match the 1x coverage. This option requires --effectiveGenomeSize.
+    Rpgc,
 }
 
 
 pub struct BedData {
     pub genome_info: Vec<(String, usize, usize)>, // (chromosome name, length, bin offset)
     pub search: HashMap<String, usize>, // get id for chr
-    pub coverage_data: Vec<u32>, // coverage data array for bins
+    pub coverage_data: Vec<f32>, // coverage data array for bins
     pub bin_width: usize, // bin width for coverage
     pub threads: usize, // how many worker threads should we use here?
+    pub nreads: usize,
 }
 
 impl BedData {
@@ -81,9 +99,10 @@ impl BedData {
             .map(|(_, length, _)| (length + bin_width - 1) / bin_width)
             .sum::<usize>();
 
-	    let mut coverage_data = vec![0u32; num_bins];
+	    let mut coverage_data = vec![0.0_f32; num_bins];
 
 	    let mut lines = 0;
+	    let mut nreads = 0;
 
 	    // Process BAM records
 	    for r in reader.records() {
@@ -108,7 +127,8 @@ impl BedData {
 	                    match singlets.remove(qname) {
 	                        Some(first_read) => {
 	                            // Mate found! Process the pair
-	                            //println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
+	                            #[cfg(debug_assertions)]
+	                            println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
 	                            if first_read.chromosome != read_data.chromosome {
 	                            	eprintln!( "chr missmatch!\n{}\n{}",first_read, read_data );
 	                            	None
@@ -123,20 +143,23 @@ impl BedData {
 	                        None => {
 	                            // Handle orphaned reads (mate unmapped)
 	                            if read_data.is("mate_unmapped") {
-	                                //println!("Orphaned read (mate unmapped): {:?}", read_data);
+	                                #[cfg(debug_assertions)]
+	                                println!("Orphaned read (mate unmapped): {:?}", read_data);
 	                                // Process it as a single read
 	                                Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
 	                            } else {
 	                                // No mate found, store this read for future pairing
 	                                singlets.insert(qname.to_string(), read_data.clone());
-	                                //println!("Storing read for future pairing: {:?}", read_data);
+	                                #[cfg(debug_assertions)]
+	                                println!("Storing read for future pairing: {:?}", read_data);
 	                                None
 	                            }
 	                        }
 	                    }
 	                } else {
 	                    // Unpaired read (not part of a pair at all)
-	                    //println!("Unpaired read: {}", read_data);
+	                    #[cfg(debug_assertions)]
+	                    println!("Unpaired read: {}", read_data);
 	                    Some ((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
 	                }
 	            }
@@ -156,18 +179,20 @@ impl BedData {
 		    }*/
 
 		    if let Some( (start, end) ) = region {
-		    	let start_window = (start +1) / 50;
-    			let end_window = (end +1 )/ 50;
+		    	let start_window = (start as usize +1) / 50;
+    			let end_window = (end as usize +1 )/ 50;
+
+    			nreads +=1;
 
 		    	let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
 				//println!("I am filling {}:{}-{} with +1",chrom_name, start, end );
 			    // Update bins
 
 		        for id in start_window..=end_window {
-		        	//println!("Trying to add {chrom_name}:{pos} - 1");
-		            if chrom_length / bin_width - chrom_offset  >= id as usize {
-		                let index= chrom_offset+ id as usize;
-		                coverage_data[index] += 1;
+		        	println!("add to {chrom_name}:{} - +50", id* bin_width );
+		            if chrom_length / bin_width >= id {
+		                let index= chrom_offset+ id;
+		                coverage_data[index] += 1.0;
 		                //println!("Adding a one to the data in index {index}");
 		            }else {
 		            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * bin_width )
@@ -179,6 +204,34 @@ impl BedData {
 	 		lines += 1;
 
 	    }
+	    // clean up singlets
+	    #[cfg(debug_assertions)]
+	    println!( "clean up {} still still unpaired reads", singlets.len());
+	    for region in &singlets {
+	    	let (start, end) = (region.1.start, region.1.start + cigar.calculate_covered_nucleotides( &region.1.cigar ).1 as i32 );
+			let start_window = (start as usize +1) / 50;
+			let end_window = (end as usize +1 )/ 50;
+			let (chrom_name, chrom_length, chrom_offset) = match search.get ( &region.1.chromosome){
+				Some(ret) => &genome_info[*ret],
+				None => continue,
+			} ;
+			nreads +=1;
+
+			#[cfg(debug_assertions)]
+            println!("Orphaned read: {}\t{}", region.0, region.1 );
+			for id in start_window..=end_window {
+	        	//println!("Trying to add {chrom_name}:{pos} - 1");
+	            if chrom_length / bin_width >= id {
+	                let index= chrom_offset+ id;
+	                coverage_data[index] += 1.0;
+	                //println!("Adding a one to the data in index {index}");
+	            }else {
+	            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * bin_width )
+	            }
+	            
+	        }
+	    }
+		
 
         BedData {
             genome_info,
@@ -186,15 +239,53 @@ impl BedData {
             coverage_data,
             bin_width,
             threads,
+            nreads,
         }
     }
 
     /// Here we have implemented all the normalization features.
+   	/// Not: just collect - no normalization whatsoever
+   	///
+    /// Rpkm: Reads Per Kilobase per Million mapped reads;
+    /// number of reads per bin / (number of mapped reads (in millions) * bin length (kb))
+    ///
+    /// Cpm: Counts Per Million mapped reads
+    /// number of reads per bin / number of mapped reads (in millions)
+    ///
+    /// Bmp: Bins Per Million mapped reads
+    /// number of reads per bin / sum of all reads per bin (in millions)
+    ///
+    /// Rpgc: reads per genomic content (1x normalization)
+    /// number of reads per bin / scaling factor for 1x average coverage.
+    /// This scaling factor, in turn, is determined from the sequencing depth: 
+    /// (total number of mapped reads * fragment length) / effective genome size. The scaling factor used is the inverse of
+    /// the sequencing depth computed for the sample to match the 1x coverage. This option requires --effectiveGenomeSize.
     pub fn normalize(&mut self, by: &Normalize ) {
     	match by {
     		Normalize::Not => {
     			// do just notthing ;-)
     		},
+    		Normalize::Rpkm => {
+    			// number of mapped reads * bin length / (in millions) / (kb)
+    			let div: f32 = (self.nreads * self.bin_width )  as f32 / 1_000_000.0 / 1_000.0 ; 
+    			// number of reads per bin / div
+				self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+    		},
+    		Normalize::Cpm => {
+    			//  number of mapped reads (in millions)
+    			let div: f32 = self.nreads as f32 / 1_000_000.0;
+    			// number of reads per bin / div
+    			self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+    		},
+    		Normalize::Bpm => {
+    			// sum of all reads per bin (in millions)
+    			let div: f32 = self.coverage_data.par_iter().sum();
+    			// number of reads per bin / div
+    			self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+    		},
+    		Normalize::Rpgc => {
+    			panic!("Sorry - not implemented at the moment");
+    		}
     	}
     }
 
@@ -272,7 +363,16 @@ impl BedData {
 	) -> std::io::Result<()> {
 	    // Open the output file
 	    let mut file = File::create(file_path)?;
+	    let mut iter = DataIter::new( self );
 
+	    while let Some(values) = &iter.next(){
+	    	writeln!(
+	            file,
+	            "{}\t{}\t{}\t{}",
+	            values.0,   // Chromosome name
+	            values.1.start, values.1.end, values.1.value
+	        ).unwrap();
+	    }
 	    // Iterate over the genome info and coverage data
 	    let mut bin_start: usize; // Start position of each bin
 	    for (_chrom_index, (chrom_name, chrom_length, bin_offset)) in self.genome_info.iter().enumerate() {
@@ -290,10 +390,10 @@ impl BedData {
 	            }
 
 	            // Get the coverage value for this bin (you'll need to map the correct coverage)
-	            let coverage_value = self.coverage_data.get(bin_offset + bin_index).unwrap_or(&0);
+	            let coverage_value = self.coverage_data.get(bin_offset + bin_index).unwrap_or(&0.0);
 
 	            // Write to the BedGraph file
-	            if *coverage_value > 0 {
+	            if *coverage_value > 0.0 {
 	                writeln!(
 	                    file,
 	                    "{}\t{}\t{}\t{}",

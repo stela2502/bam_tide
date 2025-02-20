@@ -28,6 +28,16 @@ struct Args {
     #[clap(short, long, value_enum, default_value = "bulk")]
     analysis_type: AnalysisType,
 
+    /* Taken from the bamCoverage help:
+      --normalizeUsing {RPKM,CPM,BPM,RPGC,None}
+    Use one of the entered methods to normalize the number of reads per bin. By default, no normalization is performed. RPKM = Reads Per Kilobase per Million mapped reads; CPM = Counts Per Million mapped
+    reads, same as CPM in RNA-seq; BPM = Bins Per Million mapped reads, same as TPM in RNA-seq; RPGC = reads per genomic content (1x normalization); Mapped reads are considered after blacklist filtering (if
+    applied). RPKM (per bin) = number of reads per bin / (number of mapped reads (in millions) * bin length (kb)). CPM (per bin) = number of reads per bin / number of mapped reads (in millions). BPM (per bin)
+    = number of reads per bin / sum of all reads per bin (in millions). RPGC (per bin) = number of reads per bin / scaling factor for 1x average coverage. None = the default and equivalent to not setting this
+    option at all. This scaling factor, in turn, is determined from the sequencing depth: (total number of mapped reads * fragment length) / effective genome size. The scaling factor used is the inverse of
+    the sequencing depth computed for the sample to match the 1x coverage. This option requires --effectiveGenomeSize. Each read is considered independently, if you want to only count one mate from a pair in
+    paired-end data, then use the --samFlagInclude/--samFlagExclude options. (Default: None)
+    */
     /// Normalize the data somehow
     #[clap(short, long, value_enum, default_value = "not")]
     normalize: Normalize,

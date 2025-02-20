@@ -23,9 +23,9 @@ pub struct ReadData {
 // Implementing Display trait for SecondSeq
 impl fmt::Display for ReadData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\t{}\t{}\t{}\t{}\t{}\t{}", 
+        write!(f, "{}\t{}\t{}\t{}\t{}\t{}", 
             self.chromosome, self.start, self.cigar, self.flag, self.cell_id, 
-            String::from_utf8_lossy(&self.sequence), String::from_utf8_lossy(&self.qualities) )
+            String::from_utf8_lossy(&self.sequence) )
     }
 }
 
