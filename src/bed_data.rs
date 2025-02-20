@@ -189,6 +189,7 @@ impl BedData {
 			    // Update bins
 
 		        for id in start_window..=end_window {
+		        	#[cfg(debug_assertions)]
 		        	println!("add to {chrom_name}:{} - +50", id* bin_width );
 		            if chrom_length / bin_width >= id {
 		                let index= chrom_offset+ id;
