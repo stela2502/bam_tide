@@ -374,9 +374,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.14"
+version = "1.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c3d1b2e905a3a7b00a6141adb0e4c0bb941d11caf55349d863942a1cc44e3c9"
+checksum = "c736e259eea577f443d5c86c304f9f4ae0295c43f3ba05c21f1d66b5f06001af"
 dependencies = [
  "jobserver",
  "libc",
@@ -1267,9 +1267,9 @@ checksum = "4ee93343901ab17bd981295f2cf0026d4ad018c7c31ba84549a4ddbb47a45104"
 
 [[package]]
 name = "log"
-version = "0.4.25"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "lzma-sys"
@@ -1821,8 +1821,8 @@ dependencies = [
 
 [[package]]
 name = "rustody"
-version = "2.2.4"
-source = "git+https://github.com/stela2502/Rustody?branch=main2#59d953aedf039af34441074a7384a95752e26b4e"
+version = "2.2.5"
+source = "git+https://github.com/stela2502/Rustody?branch=main2#60388a53020b8ac49800852fd2ff756e43263335"
 dependencies = [
  "ahash",
  "anyhow",

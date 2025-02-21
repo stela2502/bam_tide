@@ -1,5 +1,7 @@
 use regex::Regex;
 use rustody::mapping_info::MappingInfo;
+use rustody::genes_mapper::cigar::{Cigar, CigarEnum};
+
 
 pub struct MutationProcessor {
     pub quality_cutoff: usize, // Mean quality score threshold
@@ -10,28 +12,28 @@ impl MutationProcessor {
     /// the main entry into the mutations.
     /// Give me the bam entries start, the Cigar,  sequence and quality scores and I give you a vector detected mutations
     pub fn get_all_mutations(&self, bam_start:usize, cigar:&str, sequence:&[u8], qual:&[u8], mapping_info: &mut MappingInfo ) -> Vec<String>{
-        let re_start = Regex::new(r"(\d+)([MIDNSHPX=Z])").unwrap();
+        let cigar_obj = Cigar::new("");
+
         let mut current_position = bam_start; // Start from the provided position
         let mut current_loc_pos = 0;
         let mut ret = Vec::new();
 
 
-        for cap in re_start.captures_iter(cigar) {
-            let count: usize = cap[1].parse().unwrap(); // Mutation length
-            let operation = cap[2].chars().next().unwrap(); // Mutation type (M, I, D, etc.)
+        for cap in cigar_obj.str_to_tuple_vec(cigar, false) {
 
-            if operation != 'N' {
-                if current_loc_pos + count > qual.len() {
-                    panic!("MutationProcessor::get_all_mutations - cigar {cigar} lead to a out of range issue: {current_loc_pos} + {count} ({})> {}" ,current_loc_pos + count,qual.len() );
+            if cap.option != CigarEnum::Nothing {
+                if current_loc_pos + cap.len() > qual.len() {
+                    panic!("MutationProcessor::get_all_mutations - cigar {cigar} lead to a out of range issue: {current_loc_pos} + {} ({})> {}", 
+                        cap.len() ,current_loc_pos + cap.len(),qual.len() );
                 }
-                if let Some(name) = self.mutation_name(operation, current_position, current_loc_pos, count, sequence, qual, mapping_info) {
+                if let Some(name) = self.mutation_name( &cap.option, current_position, current_loc_pos, cap.len(), sequence, qual, mapping_info) {
                     ret.push(name)
                 }else {
                     mapping_info.report("not mutated");
                 }
-                if operation != 'D' {
-                    current_position += count;
-                    current_loc_pos += count;
+                if cap.option.adds_to_read(true) {
+                    current_position += cap.len();
+                    current_loc_pos += cap.len();
                 }
             }
         }
@@ -41,7 +43,7 @@ impl MutationProcessor {
 
     fn mutation_name(
         &self,
-        mutation_type: char,
+        mutation_type: &CigarEnum,
         start: usize,
         local_start: usize,
         length: usize,
@@ -63,9 +65,9 @@ impl MutationProcessor {
 
         // Handle each mutation type
         match mutation_type {
-            'X' => self.mismatch_name(start, local_start,length, seq),
-            'D' => self.deletion_name(start, length),
-            'I' => self.insertion_name(start, local_start, length, seq),
+            CigarEnum::Mismatch  => self.mismatch_name(start, local_start,length, seq),
+            CigarEnum::Deletion  => self.deletion_name(start, length),
+            CigarEnum::Insertion => self.insertion_name(start, local_start, length, seq),
             _ => None, // If the mutation type is unhandled, return None
         }
     }

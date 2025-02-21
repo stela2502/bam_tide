@@ -15,12 +15,14 @@ use rustody::singlecelldata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHa
 use rustody::mapping_info::MappingInfo;
 use rustody::int_to_str::IntToStr;
 //use rustody::analysis::bam_flag::BamFlag;
+use rustody::genes_mapper::cigar::CigarEnum;
 
 use std::path::Path;
 use std::collections::HashMap;
 
 use rust_htslib::bam::{Reader,Read};
 use rust_htslib::bam::Header;
+
 //use rust_htslib::header::record::LinearMap;
 
 
@@ -395,7 +397,7 @@ fn process_feature(
     };
 
     // Match gene results based on read data
-    let read_result = match match_type {
+    let first_result = match match_type {
         MatchType::Overlap => gtf.match_cigar_to_gene_overlap(
             &primary_read.chromosome,
             &primary_read.cigar,
@@ -410,8 +412,44 @@ fn process_feature(
         ),
     };
 
-    // Extract gene IDs or handle errors
-    let gene_ids = extract_gene_ids(&read_result, primary_read, mapping_info);
+    let gene_ids = if let Some(mate) = mate_read {
+        let other_result = match match_type {
+            MatchType::Overlap => gtf.match_cigar_to_gene_overlap(
+                &mate.chromosome,
+                &mate.cigar,
+                mate.start.try_into().unwrap(),
+                iterator
+            ),
+            MatchType::Exact => gtf.match_cigar_to_gene(
+                &mate.chromosome,
+                &mate.cigar,
+                mate.start.try_into().unwrap(),
+                iterator
+            ),
+        };
+        let mut count_map = HashMap::<&str, usize>::new();
+        let gene_ids_a = extract_gene_ids(&first_result, primary_read, mapping_info);
+        let gene_ids_b = extract_gene_ids(&other_result, mate, mapping_info);
+        // Count occurrences of gene IDs
+        for gene_id in gene_ids_a.iter().chain(gene_ids_b.iter()) {
+            *count_map.entry(gene_id).or_insert(0) += 1;
+        }
+
+        // Filter gene IDs that appear exactly two times
+        let result: Vec<String> = count_map
+            .iter()
+            .filter(|&(_, &count)| count == 2)
+            .map(|(&gene_id, _)| gene_id.to_string())
+            .collect();
+        result
+
+    }else {
+        extract_gene_ids(&first_result, primary_read, mapping_info)
+    };
+
+    if gene_ids.len() > 1 {
+        mapping_info.report( "Multimapper");
+    }
 
     #[cfg(debug_assertions)]
     println!(
@@ -422,7 +460,7 @@ fn process_feature(
         primary_read.cell_id
     );
 
-    // Process each gene ID
+    // Process each gene ID - no actuall we break after the first one ;-)
     for gene_id in &gene_ids {
         let gene_id_u64 = exp_idx.get_gene_id(gene_id);
         let guh = GeneUmiHash(gene_id_u64, primary_read.umi);
@@ -435,43 +473,17 @@ fn process_feature(
             if let Some(processor) = mutations {
                 handle_mutations(processor, primary_read, gene_id, mut_idx, mut_gex, mapping_info, &cell_id);
             }
-
             // If the read is paired, process the mate as well
             if let Some(mate) = mate_read {
-                todo!("Handle this case when I have more brainpower.");
-                let mate_gene_result = match match_type {
-                    MatchType::Overlap => gtf.match_cigar_to_gene_overlap(
-                        &mate.chromosome,
-                        &mate.cigar,
-                        mate.start.try_into().unwrap(),
-                        iterator
-                    ),
-                    MatchType::Exact => gtf.match_cigar_to_gene(
-                        &mate.chromosome,
-                        &mate.cigar,
-                        mate.start.try_into().unwrap(),
-                        iterator
-                    ),
-                };
-
-                let mate_gene_ids = extract_gene_ids(&mate_gene_result, mate, mapping_info);
-
-                for mate_gene_id in &mate_gene_ids {
-                    let mate_gene_id_u64 = exp_idx.get_gene_id(mate_gene_id);
-                    let mate_guh = GeneUmiHash(mate_gene_id_u64, mate.umi);
-
-                    if exp_gex.try_insert(&cell_id, mate_guh, mapping_info) {
-                        if let Some(processor) = mutations {
-                            handle_mutations(processor, mate, mate_gene_id, mut_idx, mut_gex, mapping_info, &cell_id);
-                        }
-                    } else {
-                        mapping_info.report("UMI_duplicate");
-                    }
+                if let Some(processor) = mutations {
+                    handle_mutations(processor, mate, gene_id, mut_idx, mut_gex, mapping_info, &cell_id);
                 }
             }
+
         } else {
             mapping_info.report("UMI_duplicate");
-        }
+        } 
+        break;
     }
 }
 
