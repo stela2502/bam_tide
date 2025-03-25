@@ -69,20 +69,31 @@ fn main(){
     for r in reader.records() {
     	let mut record = r.expect("Bam read could not be collected");
         let qname = String::from_utf8_lossy(record.qname()).to_string();
-        
-        writeln!(fq1_writer, "{}", as_fastq(&qname, &record.seq().as_bytes(), &record.qual() ) ).expect("Faled to write data to read1");
+        let qual = &record.qual()
+	    .iter()
+	    .map(|&q| (q + 33 ))
+	    .collect::<Vec<u8>>(); 
+        writeln!(fq1_writer, "{}", as_fastq(&qname, &record.seq().as_bytes(), qual ) ).expect("Faled to write data to read1");
 
-        writeln!(fi1_writer, "{}", as_fastq(
+        writeln!(fq2_writer, "{}", as_fastq(
             &qname, 
+            get_tag_value( &record, b"CR" ).unwrap_or_else(|| panic!("CR tag not found?! {:?}", &qname ) ).as_bytes(),
+            get_tag_value( &record, b"CY" ).unwrap_or_else(|| panic!("CY tag not found!? {:?}", &qname ) ).as_bytes()
+            /*
             ReadData::get_tag_value( &record, b"CR" ).unwrap_or( continue ).as_bytes(),
             ReadData::get_tag_value( &record, b"CY" ).unwrap_or( continue ).as_bytes() 
+            */
             ) 
         ).expect("Faled to write data to read2");
 
         writeln!(fi1_writer, "{}", as_fastq(
             &qname, 
+            get_tag_value( &record, b"UR" ).unwrap_or_else(|| panic!("UR tag not found?! {:?}", &qname )  ).as_bytes(),
+            get_tag_value( &record, b"UY" ).unwrap_or_else(|| panic!("UY tag not found? {:?}", &qname ) ).as_bytes()
+            /*
             ReadData::get_tag_value( &record, b"BC" ).unwrap_or( continue ).as_bytes(),
             ReadData::get_tag_value( &record, b"QT" ).unwrap_or( continue ).as_bytes() 
+            */
             ) 
         ).expect("Faled to write data to read2");
     }
@@ -93,5 +104,17 @@ fn main(){
 
 // Function to write a single BAM record in FASTQ format
 fn as_fastq( qname:&str, seq:&[u8], qual:&[u8] ) -> String {
-    format!( "@{}\n{}\n+\n{}", qname, String::from_utf8_lossy(&seq), qual)
+    format!( "@{}\n{}\n+\n{}", qname, String::from_utf8_lossy(&seq), String::from_utf8_lossy(qual) )
 }
+
+
+fn get_tag_value(record: &Record, tag: &[u8; 2]) -> Option<String> {
+        if let Some(value) = record.aux(tag).ok() {
+            match value {
+                rust_htslib::bam::record::Aux::String(s) => Some(s.to_string()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
