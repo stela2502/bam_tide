@@ -92,11 +92,6 @@ fn main(){
 }
 
 // Function to write a single BAM record in FASTQ format
-fn as_fastq( qname:&str, seq:&[u8], quality:&[u8] ) -> String {
-    let qual: String = quality
-	    .iter()
-	    .map(|&q| (q + 33 ) as char)
-	    .collect();
-
+fn as_fastq( qname:&str, seq:&[u8], qual:&[u8] ) -> String {
     format!( "@{}\n{}\n+\n{}", qname, String::from_utf8_lossy(&seq), qual)
 }
