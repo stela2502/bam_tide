@@ -62,7 +62,7 @@ impl ReadData {
     /// ( 0,      1,   2,     3,     4,   5,                 6,                7,               )
     /// (cell_id, umi, start, cigar, chr, is_reverse_strand, sequence as u8's, quality as u8's  )
     /// In this case, we are using ReadData in the return values.
-    fn get_tag_value(record: &Record, tag: &[u8; 2]) -> Option<String> {
+    pub fn get_tag_value(record: &Record, tag: &[u8; 2]) -> Option<String> {
         if let Some(value) = record.aux(tag).ok() {
             match value {
                 rust_htslib::bam::record::Aux::String(s) => Some(s.to_string()),
