@@ -5,7 +5,7 @@ use std::fs::{self, File, read};
 use std::path::Path;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use crate::read_data::ReadData;
+use bam_tide::read_data::ReadData;
 
 use std::time::SystemTime;
 
@@ -38,7 +38,7 @@ fn main(){
     if let Some(parent) = Path::new(&opts.prefix).parent() {
         if ! parent.exists() {
         	if let Err(err) = fs::create_dir_all(&parent) {
-	            panic!("Error creating directory {}: {}", &opts.fq, err);
+	            panic!("Error creating directory {}: {}", &opts.prefix, err);
 	        } else {
 	            println!("New output directory created successfully!");
 	        }
@@ -69,25 +69,20 @@ fn main(){
     for r in reader.records() {
     	let mut record = r.expect("Bam read could not be collected");
         let qname = String::from_utf8_lossy(record.qname()).to_string();
-        let seq = record.seq().as_bytes();
-        let qual: String = record.qual()
-            .iter()
-            .map(|&q| (q + 33 ) as char)
-            .collect();
-        writeln!(fq1_writer, "{}", as_fastq(&qname, record.seq(), record.qual() ) ).expect("Faled to write data to read1");
+        
+        writeln!(fq1_writer, "{}", as_fastq(&qname, &record.seq().as_bytes(), &record.qual() ) ).expect("Faled to write data to read1");
 
         writeln!(fi1_writer, "{}", as_fastq(
             &qname, 
-            ReadData::get_tag_value( record, "CR" ),
-            ReadData::get_tag_value( record, "CY" ) 
+            ReadData::get_tag_value( &record, b"CR" ).unwrap_or( continue ).as_bytes(),
+            ReadData::get_tag_value( &record, b"CY" ).unwrap_or( continue ).as_bytes() 
             ) 
         ).expect("Faled to write data to read2");
 
-
         writeln!(fi1_writer, "{}", as_fastq(
             &qname, 
-            ReadData::get_tag_value( record, "BC" ),
-            ReadData::get_tag_value( record, "QT" ) 
+            ReadData::get_tag_value( &record, b"BC" ).unwrap_or( continue ).as_bytes(),
+            ReadData::get_tag_value( &record, b"QT" ).unwrap_or( continue ).as_bytes() 
             ) 
         ).expect("Faled to write data to read2");
     }
@@ -97,8 +92,7 @@ fn main(){
 }
 
 // Function to write a single BAM record in FASTQ format
-fn as_fastq( qname:&str, sequence:&u8[], quality:&u8[] ) -> String {
-    let seq = sequence.as_bytes();
+fn as_fastq( qname:&str, seq:&[u8], quality:&[u8] ) -> String {
     let qual: String = quality
 	    .iter()
 	    .map(|&q| (q + 33 ) as char)
