@@ -156,7 +156,7 @@ impl BedData {
 	                            // Handle orphaned reads (mate unmapped)
 	                            if read_data.is("mate_unmapped") {
 	                                #[cfg(debug_assertions)]
-	                                println!("Orphaned read (mate unmapped): {:?}", read_data);
+	                                //println!("Orphaned read (mate unmapped): {:?}", read_data);
 	                                // Process it as a single read
 		 							
 	                        		Some (cigar.read_on_database_matching_positions(&read_data.cigar, read_data.start, add_introns))
@@ -166,7 +166,7 @@ impl BedData {
 	                                // No mate found, store this read for future pairing
 	                                singlets.insert(qname.to_string(), read_data.clone());
 	                                #[cfg(debug_assertions)]
-	                                println!("Storing read for future pairing: {:?}", read_data);
+	                                //println!("Storing read for future pairing: {:?}", read_data);
 	                                None
 	                            }
 	                        }
@@ -233,7 +233,7 @@ impl BedData {
 				let start_window = (start +1) / bin_width;
 				let end_window = (end +1 )/ bin_width;
 				nreads +=1;
-				
+
 				#[allow(unused_variables)]
 				let (chrom_name, chrom_length, chrom_offset) = match search.get ( &region.1.chromosome){
 					Some(ret) => &genome_info[*ret],

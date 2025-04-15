@@ -350,24 +350,24 @@ pub fn process_data_bowtie2(
                     match singlets.remove(qname) {
                         Some(first_read) => {
                             // Mate found! Process the pair
-                            println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
+                            //println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
                             buffer.push((first_read, Some(read_data)));
                         }
                         None => {
                             // Handle orphaned reads (mate unmapped)
                             if read_data.is("mate_unmapped") {
-                                println!("Orphaned read (mate unmapped): {:?}", read_data);
+                                //println!("Orphaned read (mate unmapped): {:?}", read_data);
                                 buffer.push((read_data, None)); // Process it as a single read
                             } else {
                                 // No mate found, store this read for future pairing
                                 singlets.insert(qname.to_string(), read_data.clone());
-                                println!("Storing read for future pairing: {:?}", read_data);
+                                //println!("Storing read for future pairing: {:?}", read_data);
                             }
                         }
                     }
                 } else {
                     // Unpaired read (not part of a pair at all)
-                    println!("Unpaired read: {:?}", read_data);
+                    //println!("Unpaired read: {:?}", read_data);
                     buffer.push((read_data, None));
                 }
             }
