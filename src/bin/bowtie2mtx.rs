@@ -6,7 +6,9 @@ use rustody::mapping_info::MappingInfo;
 
 use bam_tide::gtf::GTF;
 use bam_tide::mutation_processor::MutationProcessor;
-use bam_tide::gtf_logics::{process_data, PROGRAM_NAME, AnalysisType, MatchType, GtfType };
+use bam_tide::gtf_logics::{process_data_bowtie2, PROGRAM_NAME, AnalysisType, MatchType, GtfType };
+use rust_htslib::bam::Reader;
+use rust_htslib::bam::Read;
 
 //use rustody::ofiles::{Ofiles, Fspot};
 
@@ -19,13 +21,15 @@ use std::fs::File;
 
 use std::time::SystemTime;
 
+use rust_htslib::bam::Header;
+
 use clap::{Parser};
 
 
-/// This tool can quantify a bam file from both single cell data as well as bulk data.
-/// The default is to quantify single cell data from using the velocyto input format
-/// with these default settings: --cell_tag CB --umi_tag UB --analysis_type single-cell --match_type exact --gtf_type genes.
-/// Switching to --analysis_type "bulk" will create the mtx out files for one single cell id: "1"
+/// This tool can quantify a bam file from both single cell data as well as bulk data (untested).
+/// The main aim of this is to quantify mutations in the bam file.
+/// with these default settings: --match_type exact --gtf_type genes.
+/// Switching to --analysis_type "bulk" will create the mtx out files for one single cell id: "1" (untested)
 /// Switching to --match_type "overlap" will quantify reads in a sticky way - any overlap will be called a match - even paired ones!!
 /// Switching to --gtf_type "exons" will quantify exons instead of genes - make sure our exons are uniquely named!
 #[derive(Parser)]
@@ -34,6 +38,10 @@ struct Opts {
     /// the bam file to quantify
     #[clap(short, long)]
     bam: String,
+
+    /// the fasta file needed for mutation anaylsis
+    #[clap(short, long)]
+    fasta: Option<String>,
 
     /// the gtf file fitting to the Bam file (text or gzipped)
     #[clap(short, long)]
@@ -50,14 +58,6 @@ struct Opts {
     /// used processor cores (default all)
     #[clap(short, long)]
     num_proc: Option<usize>,
-
-    /// tag name for the CELL information (default CB for velocity default - change to CR for CellRanger)
-    #[clap(short, long)]
-    cell_tag:Option<String>,
-
-    /// tag name for the UMI information (default UB for velocity default - change to UR for CellRanger)
-    #[clap(short, long)]
-    umi_tag:Option<String>,
 
     /// For mutation collection please give me a quality cutoff for accepting a nucl as a valid mutation (20? 30?).
     #[clap(short, long)]
@@ -77,7 +77,6 @@ struct Opts {
 
 }
 
-
 // Main function
 fn main() {
     let now = SystemTime::now();
@@ -95,8 +94,6 @@ fn main() {
     // Set up logging
     let log_file_str = PathBuf::from(&opts.outpath).join("Mapping_log.txt");
     let log_file = File::create(log_file_str).expect("Failed to create log file");
-    let umi_tag: [u8; 2] = opts.umi_tag.unwrap_or_else(|| "UB".to_string()).into_bytes().try_into().expect("umi-tag must be exactly 2 chars long");
-    let cell_tag: [u8; 2] = opts.cell_tag.unwrap_or_else(|| "CB".to_string()).into_bytes().try_into().expect("umi-tag must be exactly 2 chars long");
 
     let num_threads = opts.num_proc.unwrap_or_else(rayon::current_num_threads);
 
@@ -113,21 +110,33 @@ fn main() {
         GtfType::Exons => gtf.parse_gtf_only_exons(&opts.gtf, "exon" ).unwrap(),
     };
 
-    /*let mutations: Option<MutationProcessor> = match opts.qual {
-        Some(quality) => {
-            Some(MutationProcessor { quality_cutoff:quality })
+
+    let mutations: Option<MutationProcessor> = match opts.fasta {
+        Some(fasta_path) => {
+            let reader = match Reader::from_path(&opts.bam) {
+                Ok(r) => r,
+                Err(e) => panic!("Error opening BAM file: {}", e),
+            };
+
+
+            let header = Header::from_template(reader.header());
+
+            match MutationProcessor::new(&header, &fasta_path) {
+                Ok(processor) => Some(processor),
+                Err(e) => {
+                    eprintln!("Failed to initialize MutationProcessor: {}", e);
+                    None
+                }
+            }
         },
         None => None
-    };*/
-    let mutations: Option<MutationProcessor> = None;
+    };
 
     // Process data
-    let ( mut expr_results, mut mut_results ) =  match process_data(
+    let ( mut expr_results, mut mut_results ) =  match process_data_bowtie2(
         &opts.bam,
         &mut mapping_info,
         &gtf,
-        cell_tag,
-        umi_tag,
         num_threads,
         &mutations,
         &opts.analysis_type,
@@ -181,4 +190,3 @@ fn main() {
 
     mapping_info.report_to_string();
 }
-

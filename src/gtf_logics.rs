@@ -15,7 +15,7 @@ use rustody::singlecelldata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHa
 use rustody::mapping_info::MappingInfo;
 use rustody::int_to_str::IntToStr;
 //use rustody::analysis::bam_flag::BamFlag;
-use rustody::genes_mapper::cigar::CigarEnum;
+//use rustody::genes_mapper::cigar::CigarEnum;
 
 use std::path::Path;
 use std::collections::HashMap;
@@ -196,11 +196,149 @@ pub fn process_data(
         }
         lines += 1;
 
+
         // Choose the correct function to extract the data based on the AnalysisType
         let data_tuple = match *analysis_type {
             AnalysisType::SingleCell => ReadData::from_single_cell(&record, &ref_id_to_name, &cell_tag, &umi_tag),
             AnalysisType::Bulk => ReadData::from_bulk(&record, &ref_id_to_name, &umi_tag, lines, "1"),
         };
+
+        match data_tuple {
+            Ok(res) => {
+                let qname = &res.0; // Cell ID or read name as key
+                let read_data = res.1.clone(); // Clone to avoid ownership issues
+
+                if read_data.is("paired") {
+                    match singlets.remove(qname) {
+                        Some(first_read) => {
+                            // Mate found! Process the pair
+                            println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
+                            buffer.push((first_read, Some(read_data)));
+                        }
+                        None => {
+                            // Handle orphaned reads (mate unmapped)
+                            if read_data.is("mate_unmapped") {
+                                println!("Orphaned read (mate unmapped): {:?}", read_data);
+                                buffer.push((read_data, None)); // Process it as a single read
+                            } else {
+                                // No mate found, store this read for future pairing
+                                singlets.insert(qname.to_string(), read_data.clone());
+                                println!("Storing read for future pairing: {:?}", read_data);
+                            }
+                        }
+                    }
+                } else {
+                    // Unpaired read (not part of a pair at all)
+                    println!("Unpaired read: {:?}", read_data);
+                    buffer.push((read_data, None));
+                }
+            }
+            Err("missing_Chromosome") => {
+                //eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
+            }
+            Err(err) => {
+                mapping_info.report(err);
+            }
+        }
+        
+
+        // Process buffer when it reaches the split size
+        if buffer.len() >= split {
+            pb.set_message(format!("{} million reads - processing", lines / BUFFER_SIZE));
+            process_buffer(
+                &buffer,
+                num_threads,
+                &mut expr_gex,
+                &mut expr_idx,
+                &mut mut_gex,
+                &mut mut_idx,
+                mapping_info,
+                gtf,
+                mutations,
+                match_type,
+            );
+            pb.set_message(format!("{} million reads - processing finished", lines / BUFFER_SIZE));
+            buffer.clear();
+        }
+    }
+
+    // Process remaining buffer
+    if !buffer.is_empty() {
+        pb.set_message(format!("{} million reads - processing", lines / BUFFER_SIZE));
+        process_buffer(
+            &buffer,
+            num_threads,
+            &mut expr_gex,
+            &mut expr_idx,
+            &mut mut_gex,
+            &mut mut_idx,
+            mapping_info,
+            gtf,
+            mutations,
+            match_type,
+        );
+        pb.set_message(format!("{} million reads - processing finished", lines / BUFFER_SIZE));
+    }
+
+    return Ok(((expr_gex, expr_idx), (mut_gex, mut_idx)));
+}
+
+
+// Function to process data
+pub fn process_data_bowtie2(
+    bam_file: &str,
+    mapping_info: &mut MappingInfo,
+    gtf: &GTF,
+    num_threads: usize,
+    mutations: &Option<MutationProcessor>,
+    _analysis_type: &AnalysisType,
+    match_type: &MatchType,
+    ) -> Result<( (SingleCellData, IndexedGenes),(SingleCellData, IndexedGenes) ), String> {
+
+    // Open BAM file with rust_htslib
+    //let mut reader = Reader::from_path( bam_file  ).unwrap();
+    //let header_view = Header::from_template(reader.header() );
+
+    let bam_path = Path::new(bam_file);
+    let mut reader = Reader::from_path(bam_path).map_err(|e| format!("Error opening BAM file: {}", e))?;
+    let header = Header::from_template(reader.header());
+    let ref_id_to_name = create_ref_id_to_name_hashmap( &header );
+
+    let m = MultiProgress::new();
+    let pb = m.add(ProgressBar::new(5000));
+    pb.set_style(ProgressStyle::default_bar().template("{prefix:.bold.dim} {spinner} {wide_msg}").unwrap());
+    pb.set_message("");
+
+    let mut lines = 0_u64;
+    let split = BUFFER_SIZE as usize * num_threads;
+
+    println!("Using {} processors and processing {} reads per batch", num_threads, split);
+
+    let mut buffer = Vec::<(ReadData, Option<ReadData>)>::with_capacity(split);
+    let mut expr_gex = SingleCellData::new(1);
+    let mut expr_idx = IndexedGenes::empty(Some(0));
+
+    let mut mut_gex = SingleCellData::new(1);
+    let mut mut_idx = IndexedGenes::empty(Some(0));
+
+    let mut singlets = HashMap::<String, ReadData>::new();
+
+    for r in reader.records() {
+        // Read a record from BAM file
+        let record = match r {
+            Ok(r) => r,
+            Err(e) => panic!("I could not collect a read: {e:?}"),
+        }; 
+
+        if lines % BUFFER_SIZE == 0 {
+            pb.set_message(format!("{} million reads processed", lines / BUFFER_SIZE));
+            pb.inc(1);
+        }
+        lines += 1;
+
+        // Choose the correct function to extract the data based on the AnalysisType
+        let data_tuple =  ReadData::from_singlecell_bowtie2( &record, &ref_id_to_name);
+        
 
    
         match data_tuple {
@@ -569,11 +707,9 @@ fn handle_mutations(
 ) {
     
     for mutation_name in processor.get_all_mutations(
+        &data.chromosome,
         data.start.try_into().unwrap(),
         &data.cigar,
-        &data.sequence,
-        &data.qualities,
-        mapping_info,
     ) {
         let snip = format!("{gene_id}/{}/{}", data.chromosome, mutation_name);
         let mut_id = mut_idx.get_gene_id(&snip);

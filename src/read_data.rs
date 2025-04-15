@@ -73,6 +73,75 @@ impl ReadData {
         }
     }
 
+    /// Get the values from a bowtie2-mapped single cell experiment
+    pub fn from_singlecell_bowtie2<'a>(
+        bam_feature: &'a Record,
+        chromosome_mappings: &'a HashMap<i32, String>,
+    ) -> Result<(String, Self), &'a str> {
+        // Get the read ID (qname)
+        let id = bam_feature.qname();
+        let id_str = std::str::from_utf8(id).map_err(|_| "invalid UTF-8 in qname")?;
+
+        // Split by colon and extract the last part
+        let parts: Vec<&str> = id_str.split(':').collect();
+        let cell_seq = parts.last().ok_or("missing read ID component")?;
+
+        // Check if the last part is a valid DNA string and split it
+        if !cell_seq.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
+            return Err("last part of ID is not a valid DNA sequence");
+        }
+
+        if cell_seq.len() < 17 {
+            return Err("sequence too short to contain both cell and UMI");
+        }
+
+        let cell_barcode = &cell_seq[0..16];
+        let umi = &cell_seq[16..];
+
+        // Now call your existing constructor for the record
+        
+        Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_barcode, umi )
+    }
+
+    /// get_values_bulk extracts the values and creates a ReadData object.
+    /// the CIGAR here actually contains the MD tag!
+    pub fn from_bulk_bowtie2<'a>(
+        bam_feature: &'a Record,
+        chromosmome_mappings: &'a HashMap<i32, String>,
+        umi: &str,
+        cell_id: &str,
+    ) -> Result<(String, Self), &'a str> {
+        // Extract the chromosome (reference name)
+        let chr = match chromosmome_mappings.get(&bam_feature.tid()) {
+            Some(name) => name,
+            None => return Err("missing_Chromosome"),
+        };
+
+        // Try to extract the UMI (UB), and report if missing
+        let umi_u64 = IntToStr::new(umi.into(), 32).unwrap().into_u64();
+
+        // Extract the start position (1-based for your GTF comparison)
+        let start = bam_feature.pos(); // This is 0-based, needs adjustment for GTF
+
+        let cigar = Self::get_tag_value(bam_feature, b"MD").unwrap_or_else(|| bam_feature.seq().len().to_string() ); 
+
+        // Create a new ReadData object
+        let res = Self::new(
+            cell_id,
+            umi_u64,
+            (start + 1).try_into().unwrap(), // Adjust for GTF 1-based start
+            bam_feature.flags(),
+            &cigar,
+            chr,
+            bam_feature.seq().as_bytes(),
+            bam_feature.qual().to_vec(),
+        );
+
+        let id = std::str::from_utf8(bam_feature.qname()).unwrap().to_string(); // Convert read name to string
+
+        Ok((id, res))
+    }
+
     /// get_values will extract the required fields (CellID, UMI, etc.) from a BAM record.
     pub fn from_single_cell<'a>(
         bam_feature: &'a Record,

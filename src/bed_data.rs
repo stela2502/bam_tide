@@ -201,7 +201,8 @@ impl BedData {
 		    		let start_window = (start) / bin_width;
     				let end_window = (end )/ bin_width;
     				nreads +=1;
-
+					
+					#[allow(unused_variables)]
     				let (chrom_name, chrom_length, chrom_offset) = &genome_info[ record.tid()as usize ];
 
     				for id in start_window..=end_window {
@@ -232,7 +233,8 @@ impl BedData {
 				let start_window = (start +1) / bin_width;
 				let end_window = (end +1 )/ bin_width;
 				nreads +=1;
-
+				
+				#[allow(unused_variables)]
 				let (chrom_name, chrom_length, chrom_offset) = match search.get ( &region.1.chromosome){
 					Some(ret) => &genome_info[*ret],
 					None => continue,
