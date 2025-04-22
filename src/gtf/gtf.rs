@@ -2,6 +2,8 @@ use std::collections::HashMap;
 //use std::cmp::Ordering;
 use std::error::Error;
 
+use crate::feature_matcher::*;
+
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::{BufReader, BufRead, BufWriter, Write, Read};
@@ -14,13 +16,6 @@ use std::fmt;
 use crate::gtf::{gene::Gene, gene::RegionStatus,ExonIterator,SplicedRead};
 
 use crate::gtf::exon_iterator::ReadResult;
-
-#[derive(Debug, PartialEq)]
-pub enum QueryErrors {
-    OutOfGenes,
-    ChrNotFound,
-    NoMatch,
-}
 
 
 #[derive(Debug)]
@@ -46,6 +41,149 @@ impl fmt::Display for GTF {
     }
 }
 
+impl FeatureMatcher for GTF{
+
+    // init the search - assuming we are iterating over a certain slice of a bam file
+    fn init_search( &self, chr: &str, start:usize, iterator: &mut ExonIterator )-> Result<(), QueryErrors>{
+        match self.chromosomes.get(chr) {
+            Some(genes) => {
+                match self.find_search_position(genes, start){
+                    Some( gene_id ) => {
+                        if let Some(exon_id) = genes[gene_id].find_search_position( start ){
+                            //println!("Init set the gene_id to {gene_id} and exon_id to {exon_id}");
+                            iterator.set_gene_id( gene_id );
+                            iterator.set_exon_id( exon_id );
+                            Ok(())
+                        }else {
+                            //println!("I have not found a search position!?");
+                            iterator.set_gene_id( gene_id-1 );
+                            iterator.set_exon_id( 0 );
+                            Ok(())
+                        }
+                    },
+                    None => {
+                        Err( QueryErrors::OutOfGenes )
+                    }
+                }
+            },
+            None => {
+                Err( QueryErrors::ChrNotFound )
+            }
+        }
+    }
+
+    fn process_feature(
+        &self,
+        data: &(ReadData, Option<ReadData>),
+        mutations: &Option<MutationProcessor>,
+        iterator: &mut ExonIterator,
+        exp_gex: &mut SingleCellData,
+        exp_idx: &mut IndexedGenes,
+        mut_gex: &mut SingleCellData,
+        mut_idx: &mut IndexedGenes,
+        mapping_info: &mut MappingInfo,
+        match_type: &MatchType,
+    ) {
+        let primary_read = &data.0; // Always present
+        let mate_read = data.1.as_ref(); // Optional paired read
+
+        // Parse cell ID from the primary read
+        let cell_id = match parse_cell_id( &primary_read.cell_id ) {
+            Ok(id) => id,
+            Err(_) => return,
+        };
+
+        // Match gene results based on read data
+        let first_result = match match_type {
+            MatchType::Overlap => self.match_cigar_to_gene_overlap(
+                &primary_read.chromosome,
+                &primary_read.cigar,
+                primary_read.start.try_into().unwrap(),
+                iterator
+            ),
+            MatchType::Exact => self.match_cigar_to_gene(
+                &primary_read.chromosome,
+                &primary_read.cigar,
+                primary_read.start.try_into().unwrap(),
+                iterator
+            ),
+        };
+
+        let gene_ids = if let Some(mate) = mate_read {
+            let other_result = match match_type {
+                MatchType::Overlap => self.match_cigar_to_gene_overlap(
+                    &mate.chromosome,
+                    &mate.cigar,
+                    mate.start.try_into().unwrap(),
+                    iterator
+                ),
+                MatchType::Exact => self.match_cigar_to_gene(
+                    &mate.chromosome,
+                    &mate.cigar,
+                    mate.start.try_into().unwrap(),
+                    iterator
+                ),
+            };
+            let mut count_map = HashMap::<&str, usize>::new();
+            let gene_ids_a = extract_gene_ids(&first_result, primary_read, mapping_info);
+            let gene_ids_b = extract_gene_ids(&other_result, mate, mapping_info);
+            // Count occurrences of gene IDs
+            for gene_id in gene_ids_a.iter().chain(gene_ids_b.iter()) {
+                *count_map.entry(gene_id).or_insert(0) += 1;
+            }
+
+            // Filter gene IDs that appear exactly two times
+            let result: Vec<String> = count_map
+                .iter()
+                .filter(|&(_, &count)| count == 2)
+                .map(|(&gene_id, _)| gene_id.to_string())
+                .collect();
+            result
+
+        }else {
+            extract_gene_ids(&first_result, primary_read, mapping_info)
+        };
+
+        if gene_ids.len() > 1 {
+            mapping_info.report( "Multimapper");
+        }
+
+        #[cfg(debug_assertions)]
+        println!(
+            "Chr {}, cigar {} and this start position {} : CellID: {}",
+            &primary_read.chromosome,
+            &primary_read.cigar,
+            primary_read.start,
+            primary_read.cell_id
+        );
+
+        // Process each gene ID - no actuall we break after the first one ;-)
+        for gene_id in &gene_ids {
+            let gene_id_usize = exp_idx.get_gene_id(gene_id);
+            let guh = GeneUmiHash(gene_id_usize, primary_read.umi);
+
+            #[cfg(debug_assertions)]
+            println!("\t And I got a gene: {guh}");
+
+            if exp_gex.try_insert(&cell_id, guh, mapping_info) {
+                // Handle mutations if any
+                if let Some(processor) = mutations {
+                    processor.handle_mutations( primary_read, gene_id, mut_idx, mut_gex, mapping_info, &cell_id);
+                }
+                // If the read is paired, process the mate as well
+                if let Some(mate) = mate_read {
+                    if let Some(processor) = mutations {
+                        processor.handle_mutations(mate, gene_id, mut_idx, mut_gex, mapping_info, &cell_id);
+                    }
+                }
+
+            } else {
+                mapping_info.report("UMI_duplicate");
+            } 
+            break;
+        }
+    }
+}
 
 impl GTF {
     pub fn new( exon_file_path:Option<PathBuf> ) -> Self {
@@ -64,6 +202,77 @@ impl GTF {
             exon_file,
         }
     }
+
+
+    fn extract_gene_ids(
+        read_result: &Option<Vec<ReadResult>>,
+        data: &ReadData,
+        mapping_info: &mut MappingInfo,
+    ) -> Vec<String> {
+        if let Some(results) = read_result {
+            let good: Vec<String> = results
+                .iter()
+                .filter(|result| result.sens_orientation != data.is("reverse_strand") )
+                .filter_map(|result| match result.match_type {
+                    RegionStatus::InsideExon => Some(result.gene.clone()),
+                    RegionStatus::SpanningBoundary | RegionStatus::InsideIntron => Some(format!("{}_unspliced", result.gene)),
+                    RegionStatus::ExtTag => Some(format!("{}_ext", result.gene)),
+                    _ => {
+                        mapping_info.report("missing_Gene_Info");
+                        None
+                    },
+                })
+                .collect();
+
+            if good.len() > 1 {
+                good.into_iter().map(|name| format!("{}_ambiguous", name)).collect()
+            } else if good.len() == 1 {
+                good
+            } else {
+                extract_antisense_ids(results, data, mapping_info)
+            }
+        }else {
+            vec![]
+        }
+    }
+
+    fn extract_antisense_ids(
+        results: &[ReadResult],
+        data: &ReadData,
+        mapping_info: &mut MappingInfo,
+    ) -> Vec<String> {
+        let anti: Vec<String> = results
+            .iter()
+            .filter(|result| result.sens_orientation == data.is("reverse_strand") )
+            .filter_map(|result| match result.match_type {
+                RegionStatus::InsideExon => Some(format!("{}_antisense", result.gene)),
+                RegionStatus::SpanningBoundary | RegionStatus::InsideIntron => Some(format!("{}_unspliced_antisense", result.gene)),
+                RegionStatus::ExtTag => Some(format!("{}_ext_antisense", result.gene)),
+                _ => {
+                    mapping_info.report("missing_Gene");
+                    None
+                },
+            })
+            .collect();
+
+        if anti.len() > 1 {
+            anti.into_iter().map(|name| format!("{}_ambiguous", name)).collect()
+        } else if !anti.is_empty() {
+            anti
+        } else {
+            vec![]
+        }
+    }
+
+    fn parse_cell_id(cell_id_str: &str) -> Result<u64, String> {
+        cell_id_str.parse::<u64>().or_else(|_| {
+            match IntToStr::new(cell_id_str.as_bytes().to_vec(), 32){
+                Ok(obj) => Ok(obj.into_u64()),
+                Err(e) => Err( format!("cell_name could not be parsed to u64: {e}") )
+            }
+        })
+    }
+
 
     pub fn add_lone_exon(&mut self, gene_id: &str, gene_name: &str, start: usize, end: usize, chromosome: String, sens_orientation: bool) {
         // Get the vector of genes for the specified chromosome
@@ -324,34 +533,7 @@ impl GTF {
         None
     }
 
-    // init the search - assuming we are iterating over a certain slice of a bam file
-    pub fn init_search( &self, chr: &str, start:usize, iterator: &mut ExonIterator )-> Result<(), QueryErrors>{
-        match self.chromosomes.get(chr) {
-            Some(genes) => {
-                match self.find_search_position(genes, start){
-                    Some( gene_id ) => {
-                        if let Some(exon_id) = genes[gene_id].find_search_position( start ){
-                            //println!("Init set the gene_id to {gene_id} and exon_id to {exon_id}");
-                            iterator.set_gene_id( gene_id );
-                            iterator.set_exon_id( exon_id );
-                            Ok(())
-                        }else {
-                            //println!("I have not found a search position!?");
-                            iterator.set_gene_id( gene_id-1 );
-                            iterator.set_exon_id( 0 );
-                            Ok(())
-                        }
-                    },
-                    None => {
-                        Err( QueryErrors::OutOfGenes )
-                    }
-                }
-            },
-            None => {
-                Err( QueryErrors::ChrNotFound )
-            }
-        }
-    }
+    
 
     // This collects exons from a TE gtf
     pub fn parse_gtf_only_exons(&mut self, file_path: &str, exact_attr:&str) -> Result<(), Box<dyn Error>> {

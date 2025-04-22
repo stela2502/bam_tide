@@ -104,6 +104,30 @@ impl MutationProcessor {
         })
     }
 
+    pub fn handle_mutations(
+        &self,
+        data: &ReadData,
+        gene_id: &str,
+        mut_idx: &mut IndexedGenes,
+        mut_gex: &mut SingleCellData,
+        mapping_info: &mut MappingInfo,
+        cell_id: &u64,
+    ) {
+        
+        for mutation_name in processor.get_all_mutations(
+            &data.chromosome,
+            data.start.try_into().unwrap(),
+            &data.cigar,
+        ) {
+            let snip = format!("{gene_id}/{}/{}", data.chromosome, mutation_name);
+            let mut_id = mut_idx.get_gene_id(&snip);
+            let ghum = GeneUmiHash(mut_id, data.umi);
+
+            let _ = mut_gex.try_insert(cell_id, ghum, mapping_info);
+        }
+
+    }
+
     pub fn get_all_mutations(&self, chr_name: &str, start: usize, md_tag: &str) -> Vec<String> {
         let mut mutations = Vec::new();
         

@@ -15,6 +15,9 @@ use crate::gtf_logics::{ create_ref_id_to_name_hashmap, AnalysisType };
 use crate::read_data::ReadData;
 use crate::data_iter::DataIter;
 
+use crate::feature_matcher::*;
+use crate::gtf::{SplicedRead};
+
 use rustody::genes_mapper::cigar::Cigar;
 
 //const BUFFER_SIZE: usize = 1_000_000;
@@ -68,6 +71,48 @@ pub struct BedData {
     pub bin_width: usize, // bin width for coverage
     pub threads: usize, // how many worker threads should we use here?
     pub nreads: usize,
+}
+
+
+impl FeatureMatcher for BedData{
+
+	fn init_search(
+        &self,
+        chr: &str,
+        start: usize,
+        iterator: &mut ExonIterator,
+    ) -> Result<(), QueryErrors>{
+		match self.search.get(chr) {
+			Some(_) => Ok(()),
+			None => Err( QueryErrors::ChrNotFound )
+		}
+    }
+        
+    fn process_feature(
+        &self,
+        data: &(ReadData, Option<ReadData>),
+        mutations: &Option<MutationProcessor>,
+        iterator: &mut ExonIterator,
+        exp_gex: &mut SingleCellData,
+        exp_idx: &mut IndexedGenes,
+        mut_gex: &mut SingleCellData,
+        mut_idx: &mut IndexedGenes,
+        mapping_info: &mut MappingInfo,
+        match_type: &MatchType,
+    ){
+    	let primary_read = &data.0; // Always present
+        let mate_read = data.1.as_ref(); // Optional paired read
+
+        // Parse cell ID from the primary read
+        let cell_id = match parse_cell_id( &primary_read.cell_id ) {
+            Ok(id) => id,
+            Err(_) => return,
+        };
+
+        let (spliced_read, final_position) = SplicedRead::new(cigar, initial_position);
+
+    }
+
 }
 
 impl BedData {

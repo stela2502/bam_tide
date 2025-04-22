@@ -26,8 +26,7 @@ use rust_htslib::bam::Header;
 use clap::{Parser};
 
 
-/// This tool can quantify a bam file from both single cell data as well as bulk data (untested).
-/// The main aim of this is to quantify mutations in the bam file.
+/// This tool is used to 
 /// with these default settings: --match_type exact --gtf_type genes.
 /// Switching to --analysis_type "bulk" will create the mtx out files for one single cell id: "1" (untested)
 /// Switching to --match_type "overlap" will quantify reads in a sticky way - any overlap will be called a match - even paired ones!!
@@ -43,9 +42,11 @@ struct Opts {
     #[clap(short, long)]
     fasta: Option<String>,
 
+    /*
     /// the gtf file fitting to the Bam file (text or gzipped)
     #[clap(short, long)]
     gtf: String,
+    */
 
     /// the outpath
     #[clap(short, long)]
@@ -71,10 +72,11 @@ struct Opts {
     #[clap( long, value_enum, default_value = "exact")]
     match_type: MatchType,
 
+    /*
     /// Group gtf info into genes or e.g. singel cell quantifications (genes) or use each exon on it's own for e.g. TE analyses (exon)
     #[clap( long, value_enum, default_value = "genes")]
     gtf_type: GtfType,
-
+    */
 }
 
 // Main function
@@ -104,12 +106,13 @@ fn main() {
     println!("reading GTF file");
     
 
+    /*
     let mut gtf = GTF::new(None);
     match &opts.gtf_type {
         GtfType::Genes => gtf.parse_gtf(&opts.gtf).unwrap(),
         GtfType::Exons => gtf.parse_gtf_only_exons(&opts.gtf, "exon" ).unwrap(),
     };
-
+    */
 
     let mutations: Option<MutationProcessor> = match opts.fasta {
         Some(fasta_path) => {
@@ -136,7 +139,7 @@ fn main() {
     let ( mut expr_results, mut mut_results ) =  match process_data_bowtie2(
         &opts.bam,
         &mut mapping_info,
-        &gtf,
+        None, //&gtf,
         num_threads,
         &mutations,
         &opts.analysis_type,
