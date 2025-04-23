@@ -11,14 +11,17 @@ use std::path::Path;
 use rust_htslib::bam::{Reader,Read};
 use rust_htslib::bam::Header;
 
-use crate::gtf_logics::{ create_ref_id_to_name_hashmap, AnalysisType };
-use crate::read_data::ReadData;
 use crate::data_iter::DataIter;
-
 use crate::feature_matcher::*;
-use crate::gtf::{SplicedRead};
+use crate::gtf::{gene::Gene, gene::RegionStatus,ExonIterator,SplicedRead, exon_iterator::ReadResult};
+use crate::gtf_logics::{ create_ref_id_to_name_hashmap, AnalysisType, MatchType };
+use crate::mutation_processor::MutationProcessor;
+use crate::read_data::ReadData;
 
 use rustody::genes_mapper::cigar::Cigar;
+use rustody::mapping_info::MappingInfo;
+use rustody::singlecelldata::SingleCellData;
+use rustody::singlecelldata::IndexedGenes;
 
 //const BUFFER_SIZE: usize = 1_000_000;
 use clap::ValueEnum;
@@ -76,6 +79,22 @@ pub struct BedData {
 
 impl FeatureMatcher for BedData{
 
+	fn extract_gene_ids(
+        &self,
+        read_result: &Option<Vec<ReadResult>>,
+        data: &ReadData,
+        mapping_info: &mut MappingInfo,
+    ) -> Vec<String> {
+        if let Some(results) = read_result {
+            results
+                .iter()
+                .map(|result| result.gene.clone() )
+                .collect()
+        }else {
+            vec![]
+        }
+    }
+
 	fn init_search(
         &self,
         chr: &str,
@@ -104,12 +123,15 @@ impl FeatureMatcher for BedData{
         let mate_read = data.1.as_ref(); // Optional paired read
 
         // Parse cell ID from the primary read
-        let cell_id = match parse_cell_id( &primary_read.cell_id ) {
+        let cell_id = match Self::parse_cell_id( &primary_read.cell_id ) {
             Ok(id) => id,
             Err(_) => return,
         };
 
-        let (spliced_read, final_position) = SplicedRead::new(cigar, initial_position);
+        let (spliced_read, final_position) = SplicedRead::new( &primary_read.cigar, primary_read.start.try_into().unwrap() );
+        for exon in &spliced_read.exons{
+
+        }
 
     }
 

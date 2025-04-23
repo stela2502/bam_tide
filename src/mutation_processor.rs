@@ -6,6 +6,14 @@ use std::collections::HashMap;
 
 use rust_htslib::bam::Header;
 
+use crate::read_data::ReadData;
+
+use rustody::singlecelldata::IndexedGenes;
+use rustody::singlecelldata::SingleCellData;
+use rustody::mapping_info::MappingInfo;
+use rustody::singlecelldata::cell_data::GeneUmiHash;
+
+
 pub struct MutationProcessor {
     /// the offsets for each chr
     genome_offsets: Vec<usize>,
@@ -114,7 +122,7 @@ impl MutationProcessor {
         cell_id: &u64,
     ) {
         
-        for mutation_name in processor.get_all_mutations(
+        for mutation_name in self.get_all_mutations(
             &data.chromosome,
             data.start.try_into().unwrap(),
             &data.cigar,

@@ -6,14 +6,15 @@ use indicatif::MultiProgress;
 use indicatif::ProgressStyle;
 use indicatif::ProgressBar;
 
-use crate::gtf::{GTF, ExonIterator, RegionStatus };
+use crate::gtf::{GTF, ExonIterator };
 use crate::gtf::exon_iterator::ReadResult;
+use crate::feature_matcher::FeatureMatcher;
 use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
 
-use rustody::singlecelldata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHash };
+use rustody::singlecelldata::{SingleCellData, IndexedGenes };
 use rustody::mapping_info::MappingInfo;
-use rustody::int_to_str::IntToStr;
+//use rustody::int_to_str::IntToStr;
 //use rustody::analysis::bam_flag::BamFlag;
 //use rustody::genes_mapper::cigar::CigarEnum;
 
@@ -288,7 +289,7 @@ pub fn process_data<T: FeatureMatcher>(
 pub fn process_data_bowtie2<T: FeatureMatcher>(
     bam_file: &str,
     mapping_info: &mut MappingInfo,
-    gtf: &Option<GTF>,
+    gtf: &T,
     num_threads: usize,
     mutations: &Option<MutationProcessor>,
     _analysis_type: &AnalysisType,
@@ -424,7 +425,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
 
 
 // Function to process a buffer
-fn process_buffer<T: FeatureMatcher>(
+fn process_buffer<T: FeatureMatcher + Sync>(
     buffer: &[(ReadData, Option<ReadData>)],
     num_threads: usize,
     expr_gex: &mut SingleCellData,
@@ -432,7 +433,7 @@ fn process_buffer<T: FeatureMatcher>(
     mut_gex: &mut SingleCellData,
     mut_idx: &mut IndexedGenes,
     mapping_info: &mut MappingInfo,
-    gtf: &Option<GTF>,
+    gtf: &T,
     mutations: &Option<MutationProcessor>,
     match_type: &MatchType,
 
@@ -469,7 +470,7 @@ fn process_buffer<T: FeatureMatcher>(
 }
 
 // Function to process a chunk
-fn process_chunk<T: FeatureMatcher>(chunk: &[(ReadData, Option<ReadData>)], gtf: &Option<GTF>, mutations: &Option<MutationProcessor>, match_type: &MatchType,) -> (( SingleCellData, IndexedGenes),  (SingleCellData,IndexedGenes), MappingInfo ) {
+fn process_chunk<T: FeatureMatcher>(chunk: &[(ReadData, Option<ReadData>)], gtf: &T, mutations: &Option<MutationProcessor>, match_type: &MatchType,) -> (( SingleCellData, IndexedGenes),  (SingleCellData,IndexedGenes), MappingInfo ) {
     let mut local_iterator = ExonIterator::new("part");
     // for the expression data
     let mut expr_gex = SingleCellData::new(1);

@@ -6,24 +6,28 @@ use crate::feature_matcher::*;
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
-use std::io::{BufReader, BufRead, BufWriter, Write, Read};
-use flate2::write::GzEncoder;
+use std::io::{BufReader, BufRead, Read};
 use flate2::read::GzDecoder;
-use flate2::Compression;
+
 
 use std::fmt;
 
 use crate::gtf::{gene::Gene, gene::RegionStatus,ExonIterator,SplicedRead};
-
 use crate::gtf::exon_iterator::ReadResult;
+use crate::read_data::ReadData;
+use crate::mutation_processor::MutationProcessor;
+use crate::gtf_logics::MatchType;
+use crate::feature_matcher::FeatureMatcher;
+
+use rustody::mapping_info::MappingInfo;
+use rustody::singlecelldata::SingleCellData;
+use rustody::singlecelldata::IndexedGenes;
+use rustody::singlecelldata::cell_data::GeneUmiHash;
 
 
 #[derive(Debug)]
 pub struct GTF {
-    pub chromosomes: HashMap<String, Vec<Gene>>, // Group genes and exons by chromosome
-    exon_file: Option<BufWriter<GzEncoder<File>>>, // Buffered gzip writer
-
-
+    chromosomes: HashMap<String, Vec<Gene>>, // Group genes and exons by chromosome
 }
 
 // Implement the Display trait for Gtf
@@ -42,6 +46,39 @@ impl fmt::Display for GTF {
 }
 
 impl FeatureMatcher for GTF{
+
+    fn extract_gene_ids(
+        &self,
+        read_result: &Option<Vec<ReadResult>>,
+        data: &ReadData,
+        mapping_info: &mut MappingInfo,
+    ) -> Vec<String> {
+        if let Some(results) = read_result {
+            let good:Vec<String> = results
+                .iter()
+                .filter(|result| result.sens_orientation != data.is("reverse_strand") )
+                .filter_map(|result| match result.match_type {
+                    RegionStatus::InsideExon => Some(result.gene.clone()),
+                    RegionStatus::SpanningBoundary | RegionStatus::InsideIntron => Some(format!("{}_unspliced", result.gene)),
+                    RegionStatus::ExtTag => Some(format!("{}_ext", result.gene.clone())),
+                    _ => {
+                        mapping_info.report("missing_Gene_Info");
+                        None
+                    },
+                })
+                .collect();
+
+            if good.len() > 1 {
+                good.into_iter().map(|name| format!("{}_ambiguous", name)).collect()
+            } else if good.len() == 1 {
+                good
+            } else {
+                self.extract_antisense_ids(results, data, mapping_info)
+            }
+        }else {
+            vec![]
+        }
+    }
 
     // init the search - assuming we are iterating over a certain slice of a bam file
     fn init_search( &self, chr: &str, start:usize, iterator: &mut ExonIterator )-> Result<(), QueryErrors>{
@@ -88,7 +125,7 @@ impl FeatureMatcher for GTF{
         let mate_read = data.1.as_ref(); // Optional paired read
 
         // Parse cell ID from the primary read
-        let cell_id = match parse_cell_id( &primary_read.cell_id ) {
+        let cell_id = match Self::parse_cell_id( &primary_read.cell_id ) {
             Ok(id) => id,
             Err(_) => return,
         };
@@ -125,8 +162,8 @@ impl FeatureMatcher for GTF{
                 ),
             };
             let mut count_map = HashMap::<&str, usize>::new();
-            let gene_ids_a = extract_gene_ids(&first_result, primary_read, mapping_info);
-            let gene_ids_b = extract_gene_ids(&other_result, mate, mapping_info);
+            let gene_ids_a = self.extract_gene_ids(&first_result, primary_read, mapping_info);
+            let gene_ids_b = self.extract_gene_ids(&other_result, mate, mapping_info);
             // Count occurrences of gene IDs
             for gene_id in gene_ids_a.iter().chain(gene_ids_b.iter()) {
                 *count_map.entry(gene_id).or_insert(0) += 1;
@@ -141,7 +178,7 @@ impl FeatureMatcher for GTF{
             result
 
         }else {
-            extract_gene_ids(&first_result, primary_read, mapping_info)
+            self.extract_gene_ids(&first_result, primary_read, mapping_info)
         };
 
         if gene_ids.len() > 1 {
@@ -186,57 +223,15 @@ impl FeatureMatcher for GTF{
 }
 
 impl GTF {
-    pub fn new( exon_file_path:Option<PathBuf> ) -> Self {
-
-        let exon_file = exon_file_path.map(|path| {
-            let file = File::create(path).expect("Unable to create exon file");
-            let encoder = GzEncoder::new(file, Compression::default());
-            let mut writer = BufWriter::new(encoder);
-            let line = format!("transcript_id\tgene_name\tchr\tstart\tend\n");
-            writer.write_all(line.as_bytes()).expect("Failed to write to file");
-            writer
-        });
+    pub fn new(  ) -> Self {
 
         GTF {
             chromosomes: HashMap::new(),
-            exon_file,
         }
     }
 
-
-    fn extract_gene_ids(
-        read_result: &Option<Vec<ReadResult>>,
-        data: &ReadData,
-        mapping_info: &mut MappingInfo,
-    ) -> Vec<String> {
-        if let Some(results) = read_result {
-            let good: Vec<String> = results
-                .iter()
-                .filter(|result| result.sens_orientation != data.is("reverse_strand") )
-                .filter_map(|result| match result.match_type {
-                    RegionStatus::InsideExon => Some(result.gene.clone()),
-                    RegionStatus::SpanningBoundary | RegionStatus::InsideIntron => Some(format!("{}_unspliced", result.gene)),
-                    RegionStatus::ExtTag => Some(format!("{}_ext", result.gene)),
-                    _ => {
-                        mapping_info.report("missing_Gene_Info");
-                        None
-                    },
-                })
-                .collect();
-
-            if good.len() > 1 {
-                good.into_iter().map(|name| format!("{}_ambiguous", name)).collect()
-            } else if good.len() == 1 {
-                good
-            } else {
-                extract_antisense_ids(results, data, mapping_info)
-            }
-        }else {
-            vec![]
-        }
-    }
-
-    fn extract_antisense_ids(
+    pub fn extract_antisense_ids(
+        &self,
         results: &[ReadResult],
         data: &ReadData,
         mapping_info: &mut MappingInfo,
@@ -264,15 +259,6 @@ impl GTF {
         }
     }
 
-    fn parse_cell_id(cell_id_str: &str) -> Result<u64, String> {
-        cell_id_str.parse::<u64>().or_else(|_| {
-            match IntToStr::new(cell_id_str.as_bytes().to_vec(), 32){
-                Ok(obj) => Ok(obj.into_u64()),
-                Err(e) => Err( format!("cell_name could not be parsed to u64: {e}") )
-            }
-        })
-    }
-
 
     pub fn add_lone_exon(&mut self, gene_id: &str, gene_name: &str, start: usize, end: usize, chromosome: String, sens_orientation: bool) {
         // Get the vector of genes for the specified chromosome
@@ -280,10 +266,7 @@ impl GTF {
         
         let mut new_gene = Gene::new(gene_id, gene_id, start, end, sens_orientation);
         new_gene.add_exon(start, end);
-        if let Some(ref mut writer) = self.exon_file {
-            let line = format!("{}\t{}\t{}\t{}\t{}\n", gene_id, gene_name, chromosome, start, end);
-            writer.write_all(line.as_bytes()).expect("Failed to write to file");
-        }
+
         chromosome_genes.push(new_gene);
         
     }
@@ -301,10 +284,7 @@ impl GTF {
             // If the gene does not exist, create a new gene and add the exon
             let mut new_gene = Gene::new(gene_id, gene_name, start, end, sens_orientation);
             new_gene.add_exon(start, end);
-            if let Some(ref mut writer) = self.exon_file {
-                let line = format!("{}\t{}\t{}\t{}\t{}\n", gene_id, gene_name, chromosome, start, end);
-                writer.write_all(line.as_bytes()).expect("Failed to write to file");
-            }
+
             chromosome_genes.push(new_gene);
         }
     }
