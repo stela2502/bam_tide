@@ -172,7 +172,7 @@ impl MutationProcessor {
                         match_len = 0;  // Reset match length after moving
                     }
                     // When we encounter a mismatch, we construct the mutation string
-                    println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
+                    //println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
                     let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos ];// Get the reference base at current position
                     let alt_base = c;
                     mutations.push(format!(
