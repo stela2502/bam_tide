@@ -4,7 +4,7 @@ use std::error::Error;
 
 use crate::feature_matcher::*;
 
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::fs::File;
 use std::io::{BufReader, BufRead, Read};
 use flate2::read::GzDecoder;
@@ -260,7 +260,7 @@ impl GTF {
     }
 
 
-    pub fn add_lone_exon(&mut self, gene_id: &str, gene_name: &str, start: usize, end: usize, chromosome: String, sens_orientation: bool) {
+    pub fn add_lone_exon(&mut self, gene_id: &str, _gene_name: &str, start: usize, end: usize, chromosome: String, sens_orientation: bool) {
         // Get the vector of genes for the specified chromosome
         let chromosome_genes = self.chromosomes.entry(chromosome.clone()).or_insert(Vec::new());
         

@@ -4,7 +4,7 @@
 use needletail::parse_fastx_file;
 use std::collections::HashMap;
 
-use rust_htslib::bam::Header;
+use rust_htslib::bam::{ Read, Reader, Header };
 
 use crate::read_data::ReadData;
 
@@ -27,7 +27,16 @@ impl MutationProcessor {
 
 
     /// Initializes the MutationProcessor from a BAM header and a FASTA file
-    pub fn new( header: &Header, fasta: &str ) -> Result<Self, String> {
+    pub fn new( bam_file: &str, fasta: &str ) -> Result<Self, String> {
+        
+        let reader = match Reader::from_path(bam_file) {
+            Ok(r) => r,
+            Err(e) => panic!("Error opening BAM file: {}", e),
+        };
+
+
+        let header = Header::from_template(reader.header());
+
         let header_map = header.to_hashmap();
         let mut total_length = 0;
 
@@ -163,7 +172,8 @@ impl MutationProcessor {
                         match_len = 0;  // Reset match length after moving
                     }
                     // When we encounter a mismatch, we construct the mutation string
-                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos];// Get the reference base at current position
+                    println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
+                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos ];// Get the reference base at current position
                     let alt_base = c;
                     mutations.push(format!(
                         "{}:g.{}{}>{}",
@@ -200,4 +210,101 @@ impl MutationProcessor {
 
         mutations
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_mutation_processor_new() {
+        let fasta_path = "testData/mutation_test.fa.gz";
+        let bam_path = "testData/mutation_test.bam"; // Or use a dummy path if unused
+
+        assert!(Path::new(fasta_path).exists(), "FASTA test file not found.");
+        assert!(Path::new(bam_path).exists(), "BAM test file not found.");
+
+        match MutationProcessor::new(bam_path, fasta_path) {
+            Ok(processor) => {
+                assert!(!processor.genome.is_empty(), "Genome should not be empty.");
+                assert!(
+                    !processor.chr_names.is_empty(),
+                    "Chromosome names should be loaded."
+                );
+                println!("Loaded genome with {} bases.", processor.genome.len());
+            }
+            Err(e) => panic!("MutationProcessor failed to load: {}", e),
+        }
+    }
+    
+
+    #[test]
+    fn test_handle_mutations() {
+        // Set up dummy genome
+        let fasta_path = "testData/mutation_test.fa.gz";
+        /*
+>chr1
+00000000001111111111222222222233
+01234567890123456789012345678901
+ACTGACTGACTGACTGACTGACTGACTGACTG
+
+
+        */
+        let bam_path = "testData/mutation_test.bam"; // Not used, can be dummy
+        /*
+@HD VN:1.6  SO:coordinate
+@SQ SN:chr1 LN:32
+@PG ID:samtools PN:samtools VN:1.19.2   CL:samtools view -b mutation_test.sam
+@PG ID:samtools.1   PN:samtools PP:samtools VN:1.19.2   CL:samtools view -h mutation_test.bam
+@PG ID:samtools.2   PN:samtools PP:samtools.1   VN:1.19.2   CL:samtools view -h mutation_test.sam
+@PG ID:samtools.3   PN:samtools PP:samtools.2   VN:1.19.2   CL:samtools view -h mutation_test.bam
+read1:AGCTGCTGAGATCGATACAGTAATTGGTCA    0   chr1    1   60  10M *   0   0   ACTGACTTAC  *   MD:Z:6T3
+read2:AGCTGCTGAGATCGATACAGTTTTTGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC  *   MD:Z:2T7
+read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC  *   MD:Z:4C5
+        */
+        let processor = MutationProcessor::new(bam_path, fasta_path)
+            .expect("Failed to load MutationProcessor");
+
+        let mut reader = match Reader::from_path(bam_path) {
+            Ok(r) => r,
+            Err(e) => panic!("Error opening BAM file: {}", e),
+        };
+
+        let mut mapping_info = MappingInfo::new(None, 3.0, 0, None);
+        let mut gex = SingleCellData::new(1);
+        let mut idx = IndexedGenes::empty(Some(0));
+        let cell_id = 1_u64;
+
+
+        for r in reader.records() {
+            // Read a record from BAM file
+            let record = match r {
+                Ok(r) => r,
+                Err(e) => panic!("I could not collect a read: {e:?}"),
+            };
+            let mut ref_id_to_name = HashMap::<i32, String>::new();
+            ref_id_to_name.insert( 0, "chr1".to_string() );
+            match ReadData::from_singlecell_bowtie2(&record, &ref_id_to_name) {
+                Ok((_id, read)) => {
+                    // Process the read if successful
+                    processor.handle_mutations(&read, "unknown", &mut idx, &mut gex, &mut mapping_info, &cell_id);
+                },
+                Err(e) => {
+                    // Handle the error, log it, and continue processing
+                    panic!("Error processing BAM record: {:?}", e);
+
+                }
+            }
+            
+        }
+
+        assert_eq!( idx.get_all_gene_names().len(), 2, "detected only one mutation {:?}", idx.get_all_gene_names() );
+        assert_eq!( idx.get_all_gene_names()[0], "unknown/chr1/chr1:g.7G>T" );
+        //assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.7G>T" );
+        assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.8A>C" );
+
+    }
+
 }

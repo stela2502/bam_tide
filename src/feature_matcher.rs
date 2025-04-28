@@ -17,7 +17,7 @@ pub enum QueryErrors {
     NoMatch,
 }
 
-pub trait FeatureMatcher {
+pub trait FeatureMatcher: Sync + Send {
     /// process feature gets one or two BAM reads and needs to figure out how to add them to the exp_gex and mut_gex single cells data obejcts.
 
     fn init_search(

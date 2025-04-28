@@ -107,7 +107,7 @@ fn main() {
     println!("reading GTF file");
     
 
-    let mut gtf = GTF::new(None);
+    let mut gtf = GTF::new();
     match &opts.gtf_type {
         GtfType::Genes => gtf.parse_gtf(&opts.gtf).unwrap(),
         GtfType::Exons => gtf.parse_gtf_only_exons(&opts.gtf, "exon" ).unwrap(),

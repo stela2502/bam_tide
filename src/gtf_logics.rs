@@ -6,8 +6,8 @@ use indicatif::MultiProgress;
 use indicatif::ProgressStyle;
 use indicatif::ProgressBar;
 
-use crate::gtf::{GTF, ExonIterator };
-use crate::gtf::exon_iterator::ReadResult;
+use crate::gtf::{ ExonIterator };
+//use crate::gtf::exon_iterator::ReadResult;
 use crate::feature_matcher::FeatureMatcher;
 use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
@@ -147,7 +147,7 @@ pub fn create_ref_id_to_name_hashmap(header_view: &Header ) -> HashMap<i32, Stri
 pub fn process_data<T: FeatureMatcher>(
     bam_file: &str,
     mapping_info: &mut MappingInfo,
-    gtf: &GTF,
+    gtf: &T,
     cell_tag: [u8; 2],
     umi_tag: [u8; 2],
     num_threads: usize,

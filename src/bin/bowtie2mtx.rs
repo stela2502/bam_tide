@@ -4,11 +4,11 @@
 //use rustody::traits::CellIndex;
 use rustody::mapping_info::MappingInfo;
 
-use bam_tide::gtf::GTF;
+use bam_tide::bed_data::BedData;
 use bam_tide::mutation_processor::MutationProcessor;
-use bam_tide::gtf_logics::{process_data_bowtie2, PROGRAM_NAME, AnalysisType, MatchType, GtfType };
-use rust_htslib::bam::Reader;
-use rust_htslib::bam::Read;
+use bam_tide::gtf_logics::{process_data_bowtie2, PROGRAM_NAME, AnalysisType, MatchType };
+//use rust_htslib::bam::Reader;
+//use rust_htslib::bam::Read;
 
 //use rustody::ofiles::{Ofiles, Fspot};
 
@@ -20,8 +20,6 @@ use std::fs::File;
 //use rayon::prelude::*;
 
 use std::time::SystemTime;
-
-use rust_htslib::bam::Header;
 
 use clap::{Parser};
 
@@ -106,25 +104,12 @@ fn main() {
     println!("reading GTF file");
     
 
-    /*
-    let mut gtf = GTF::new(None);
-    match &opts.gtf_type {
-        GtfType::Genes => gtf.parse_gtf(&opts.gtf).unwrap(),
-        GtfType::Exons => gtf.parse_gtf_only_exons(&opts.gtf, "exon" ).unwrap(),
-    };
-    */
+    let bin_width = 500;
+    let bed = BedData::init( &opts.bam, bin_width, num_threads );
 
     let mutations: Option<MutationProcessor> = match opts.fasta {
         Some(fasta_path) => {
-            let reader = match Reader::from_path(&opts.bam) {
-                Ok(r) => r,
-                Err(e) => panic!("Error opening BAM file: {}", e),
-            };
-
-
-            let header = Header::from_template(reader.header());
-
-            match MutationProcessor::new(&header, &fasta_path) {
+            match MutationProcessor::new(&opts.bam, &fasta_path) {
                 Ok(processor) => Some(processor),
                 Err(e) => {
                     eprintln!("Failed to initialize MutationProcessor: {}", e);
@@ -139,7 +124,7 @@ fn main() {
     let ( mut expr_results, mut mut_results ) =  match process_data_bowtie2(
         &opts.bam,
         &mut mapping_info,
-        None, //&gtf,
+        &bed,
         num_threads,
         &mutations,
         &opts.analysis_type,
