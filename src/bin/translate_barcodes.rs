@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let map = match &args.map{
         Some(path) => path,
-        None => "/",
+        None => &PathBuf::new( ),
     };
     let mapper = ATACtoRNAMapper::from_binary_file(&map)
         .map_err(|e| format!("Failed to load mapping: {}\nThe file is available in the github repo!", e))?;
@@ -53,10 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for line in reader.lines() {
         let barcode = line?;
-        let atac_id = barcode_to_u32(&barcode); 
+        let atac_id = barcode_to_u32(&barcode, &mut i2s); 
 
         if let Some(rna_id) = mapper.translate(atac_id) {
-            let rna_barcode = u32_to_barcode(rna_id);
+            let rna_barcode = u32_to_barcode(rna_id, &mut i2s);
             writeln!(writer, "{}", rna_barcode)?;
         } else {
             eprintln!("Warning: no mapping found for barcode '{}'", barcode);
@@ -75,5 +75,5 @@ fn barcode_to_u32(barcode: &str, i2s: &mut IntToStr) -> u32 {
 
 fn u32_to_barcode(encoded: u32, i2s: &mut IntToStr) -> String {
     // Your decoding logic
-    i2s.u64_to_string(16, encoded.try_into().unwrap() )
+    i2s.u64_to_string(16, &(encoded.into()) )
 }

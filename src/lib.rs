@@ -1,4 +1,5 @@
 
+pub mod atac_to_rna_mapper;
 pub mod bed_data;
 pub mod data_iter;
 
@@ -10,9 +11,11 @@ pub mod read_data;
 
 pub mod feature_matcher;
 pub use crate::feature_matcher::QueryErrors; 
+pub use crate::atac_to_rna_mapper::ATACtoRNAMapper;
 
 use directories::ProjectDirs;
 use std::path::PathBuf;
+
 
 pub fn get_data_dir() -> PathBuf {
     ProjectDirs::from("org", "MyOrg", "bam_tide")

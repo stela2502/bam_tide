@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
+
 
 pub struct ATACtoRNAMapper {
     mapping: HashMap<u32, u32>,
