@@ -40,11 +40,10 @@ struct Opts {
     #[clap(short, long)]
     fasta: Option<String>,
 
-    /*
-    /// the gtf file fitting to the Bam file (text or gzipped)
-    #[clap(short, long)]
-    gtf: String,
-    */
+    
+    /// the bin width for the genome coverage info
+    #[clap( long, default_value_t = 1000 )]
+    bin_width: usize,
 
     /// the outpath
     #[clap(short, long)]
@@ -101,11 +100,11 @@ fn main() {
     mapping_info.start_counter();
 
     // Parse BAM and GTF
-    println!("reading GTF file");
+    println!("creating Bed coverage info");
     
+    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads );
 
-    let bin_width = 500;
-    let bed = BedData::init( &opts.bam, bin_width, num_threads );
+    println!("Created {} bed areas", bed.coverage_data.len() );
 
     let mutations: Option<MutationProcessor> = match opts.fasta {
         Some(fasta_path) => {
