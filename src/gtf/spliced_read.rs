@@ -98,6 +98,12 @@ impl SplicedRead {
                 end: current_exon_start + exon_length - 1,
                 mutations: mutation_count,
             });
+        }else{
+            exons.push(Exon {
+                start,
+                end: current_position,
+                mutations: mutation_count,
+            })
         }
 
         ( SplicedRead { 
@@ -107,4 +113,57 @@ impl SplicedRead {
 	       }, 
         current_position ) // Return SplicedRead and current position
     }
+
+    pub fn new_mut(md_tag: &str, start: usize) -> (Self, usize) {
+
+        let mut current_pos = start -1;
+        let mut i = 0;
+        
+        // Iterate over the MD tag, which contains the match/mismatch information
+        //let segments = md_tag.split(|c| c == 'A' || c == 'T' || c == 'C' || c == 'G');
+        let mut match_len = 0;
+
+        for c in md_tag.chars() {
+            match c {
+                // Match or mismatch (number indicates match length)
+                '0'..='9' => {
+                    match_len = match_len * 10 + c.to_digit(10).unwrap() as usize;
+                }
+                // Mismatch - the character in the MD string
+                'A' | 'T' | 'C' | 'G' => {
+                    // First, move the current position based on the match length
+                    if match_len > 0 {
+                        current_pos += match_len;
+                        match_len = 0;  // Reset match length after moving
+                    }
+
+                    // Update the current position
+                    current_pos += 1;
+                }
+                // Handle deletions, where ^ indicates deleted bases in the reference
+                '^' => {
+                    i += 1; // Skip the '^'
+                    let mut deleted_bases = String::new();
+                    while i < md_tag.len() && md_tag.chars().nth(i).unwrap().is_alphabetic() {
+                        deleted_bases.push(md_tag.chars().nth(i).unwrap());
+                        i += 1;
+                    }
+                }
+                // Skip anything else - should not be anything in fact
+                _ => {}
+            }
+        }
+        ( SplicedRead { 
+            start,
+            end: start +i,
+            exons: vec![ 
+            Exon{ 
+                start,
+                end: start +current_pos,
+                mutations :0
+            }
+            ] 
+        }, 
+        start +i )
+    } 
 }

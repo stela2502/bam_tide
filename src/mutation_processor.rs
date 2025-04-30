@@ -7,12 +7,22 @@ use std::collections::HashMap;
 use rust_htslib::bam::{ Read, Reader, Header };
 
 use crate::read_data::ReadData;
+use crate::bed_data::ChrArea;
 
 use rustody::singlecelldata::IndexedGenes;
 use rustody::singlecelldata::SingleCellData;
 use rustody::mapping_info::MappingInfo;
 use rustody::singlecelldata::cell_data::GeneUmiHash;
 
+use std::collections::HashSet;
+
+fn find_area_for_pos(pos: usize, areas: &Option<HashSet<ChrArea>>) -> Option<&ChrArea> {
+    if let Some(areas) = &*areas {
+        areas.iter().find(|area| area.match_pos(pos))
+    }else {
+        None
+    }
+}
 
 pub struct MutationProcessor {
     /// the offsets for each chr
@@ -129,15 +139,19 @@ impl MutationProcessor {
         mut_gex: &mut SingleCellData,
         mapping_info: &mut MappingInfo,
         cell_id: &u64,
+        guhs: Option<HashSet::<ChrArea>>
     ) {
         
         for mutation_name in self.get_all_mutations(
             &data.chromosome,
             data.start.try_into().unwrap(),
             &data.cigar,
+            guhs
         ) {
-            let snip = format!("{gene_id}/{}/{}", data.chromosome, mutation_name);
+
+            let snip = format!("{gene_id}/{}", mutation_name);
             let mut_id = mut_idx.get_gene_id(&snip);
+            //println!("I have added the mutation {snip} as id {mut_id}");
             let ghum = GeneUmiHash(mut_id, data.umi);
 
             let _ = mut_gex.try_insert(cell_id, ghum, mapping_info);
@@ -145,7 +159,9 @@ impl MutationProcessor {
 
     }
 
-    pub fn get_all_mutations(&self, chr_name: &str, start: usize, md_tag: &str) -> Vec<String> {
+
+
+    pub fn get_all_mutations(&self, chr_name: &str, start: usize, md_tag: &str, guhs: Option<HashSet::<ChrArea>> ) -> Vec<String> {
         let mut mutations = Vec::new();
         
         // Retrieve chromosome name
@@ -175,12 +191,15 @@ impl MutationProcessor {
                     //println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
                     let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos ];// Get the reference base at current position
                     let alt_base = c;
+
+                    let addon = match find_area_for_pos( current_pos, &guhs){
+                        Some(d) => format!("{}", d),
+                        None => "unknown".to_string(),
+                    };
+                    //println!("I have obtained the addon {addon} and will return {addon}/{chr_name}:g.{current_pos}{}>{alt_base}",ref_base as char);
                     mutations.push(format!(
-                        "{}:g.{}{}>{}",
-                        chr_name,
-                        current_pos,
-                        ref_base as char,
-                        alt_base
+                        "{addon}/{chr_name}:g.{current_pos}{}>{alt_base}",
+                        ref_base as char
                     ));
 
                     // Update the current position
@@ -196,10 +215,15 @@ impl MutationProcessor {
                     }
 
                     // We are not changing the current position since the bases were deleted in the reference
+                    let addon = match find_area_for_pos( current_pos, &guhs){
+                        Some(d) => format!("{}", d),
+                        None => "unknown".to_string(),
+                    };
                     mutations.push(format!(
-                        "{}:g.{}del{}",
+                        "{}/{}:g.{}del{}",
+                        addon,
                         chr_name,
-                        current_pos + 1, // Position in 1-based coordinate
+                        current_pos, // Position in 1-based coordinate
                         deleted_bases
                     ));
                 }
@@ -239,6 +263,12 @@ mod tests {
         }
     }
     
+    use std::path::PathBuf;
+    use flate2::read::GzDecoder;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::fs;
+
 
     #[test]
     fn test_handle_mutations() {
@@ -304,6 +334,24 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
         assert_eq!( idx.get_all_gene_names()[0], "unknown/chr1/chr1:g.7G>T" );
         //assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.7G>T" );
         assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.8A>C" );
+
+        // check if the cell names make sense
+        let file_path = PathBuf::from("test_output/mutations");
+        if file_path.exists() {
+            fs::remove_dir_all(&file_path).expect("Failed to remove existing directory");
+        }
+        gex.write_sparse( file_path.clone(), &idx, 0 );
+
+        let expected_files = vec![
+            "barcodes.tsv.gz",
+            "features.tsv.gz",
+            "matrix.mtx.gz",
+        ];
+
+        for file in expected_files {
+            let file = file_path.join(file);
+            assert!(file.exists(), "Expected file {:?} was not created", file);
+        }
 
     }
 

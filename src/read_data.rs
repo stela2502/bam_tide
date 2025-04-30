@@ -98,6 +98,8 @@ impl ReadData {
         let cell_barcode = &cell_seq[0..16];
         let umi = &cell_seq[16..];
 
+        //panic!("We have the cell id {} and the umi {} from the seq {}", cell_barcode, umi, cell_seq);
+
         // Now call your existing constructor for the record
         
         Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_barcode, umi )
@@ -108,8 +110,8 @@ impl ReadData {
     pub fn from_bulk_bowtie2<'a>(
         bam_feature: &'a Record,
         chromosmome_mappings: &'a HashMap<i32, String>,
-        umi: &str,
         cell_id: &str,
+        umi: &str,  
     ) -> Result<(String, Self), &'a str> {
         // Extract the chromosome (reference name)
         let chr = match chromosmome_mappings.get(&bam_feature.tid()) {

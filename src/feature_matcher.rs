@@ -51,10 +51,13 @@ pub trait FeatureMatcher: Sync + Send {
 
     fn parse_cell_id(cell_id_str: &str) -> Result<u64, String> {
         cell_id_str.parse::<u64>().or_else(|_| {
-            match IntToStr::new(cell_id_str.as_bytes().to_vec(), 32){
+
+            let ret = match IntToStr::new(cell_id_str.as_bytes().to_vec(), 32){
                 Ok(obj) => Ok(obj.into_u64()),
                 Err(e) => Err( format!("cell_name could not be parsed to u64: {e}") )
-            }
+            };
+            //println!("I am trying to encode the cell ID {} as 2bit u64 {:?}", cell_id_str, ret);
+            ret
         })
     }
 

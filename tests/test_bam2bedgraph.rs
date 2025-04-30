@@ -54,6 +54,4 @@ fn test_bam2bedgraph() {
     // Convert output to string
     let output_str = String::from_utf8_lossy(&output.stdout);
 
-
-
 }

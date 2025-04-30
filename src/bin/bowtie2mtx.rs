@@ -145,7 +145,7 @@ fn main() {
     mapping_info.write_to_log( info );
 
     if mut_results.0.len() > 0 {
-        let file_path_sp_mut = PathBuf::from(&opts.outpath).join( &*PROGRAM_NAME ).join("_mutations");
+        let file_path_sp_mut = PathBuf::from(&opts.outpath).join( &*PROGRAM_NAME ).join("mutations");
         println!("Writing mutation data to path {:?}", file_path_sp_mut);
         let i2 = mut_results.0.write_sparse_sub(file_path_sp_mut, &mut_results.1, &mut_results.1.get_all_gene_names(), opts.min_umi).unwrap();
         mapping_info.write_to_log( i2 );
