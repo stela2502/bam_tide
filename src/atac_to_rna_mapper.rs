@@ -3,13 +3,20 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
-
+use std::env;
 
 pub struct ATACtoRNAMapper {
     mapping: HashMap<u32, u32>,
 }
 
 fn get_default_path() -> PathBuf {
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            if parent.starts_with("/usr/local") {
+                return PathBuf::from("/usr/local/share/bam_tide/whitelist_map.bin");
+            }
+        }
+    }
     ProjectDirs::from("com", "stela2502", "bam_tide")
         .expect("Could not determine default data directory")
         .data_local_dir()
@@ -20,6 +27,8 @@ impl ATACtoRNAMapper {
     /// Load the binary map from file
     pub fn from_binary_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let user_path = path.as_ref();
+
+
 
         // Try user-provided path
         let buffer = match File::open(user_path) {
