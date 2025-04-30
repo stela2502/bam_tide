@@ -151,6 +151,7 @@ fn main() {
         mapping_info.write_to_log( i2 );
     }
 
+    mapping_info.stop_file_io_time();
     
     mapping_info.log_report( );
 

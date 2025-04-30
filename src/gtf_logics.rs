@@ -384,6 +384,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
         // Process buffer when it reaches the split size
         if buffer.len() >= split {
             pb.set_message(format!("{} million reads - processing", lines / BUFFER_SIZE));
+            
             process_buffer(
                 &buffer,
                 num_threads,
