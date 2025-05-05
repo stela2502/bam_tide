@@ -29,7 +29,7 @@ use rust_htslib::bam::Header;
 
 
 const BUFFER_SIZE: u64 = 1_000_000;
-const ATAC_BUFFER_SIZE: u64 = 10_000;
+const ATAC_BUFFER_SIZE: u64 = 100_000;
 
 
 use std::env;
