@@ -164,6 +164,7 @@ pub fn process_data<T: FeatureMatcher>(
 
     let bam_path = Path::new(bam_file);
     let mut reader = Reader::from_path(bam_path).map_err(|e| format!("Error opening BAM file: {}", e))?;
+    reader.set_threads(4).expect("Failed to set threads");
     let header = Header::from_template(reader.header());
     let ref_id_to_name = create_ref_id_to_name_hashmap( &header );
 
@@ -304,6 +305,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
 
     let bam_path = Path::new(bam_file);
     let mut reader = Reader::from_path(bam_path).map_err(|e| format!("Error opening BAM file: {}", e))?;
+    reader.set_threads(4).expect("Failed to set threads");
     let header = Header::from_template(reader.header());
     let ref_id_to_name = create_ref_id_to_name_hashmap( &header );
 
