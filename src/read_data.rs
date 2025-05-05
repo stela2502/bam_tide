@@ -29,6 +29,22 @@ impl fmt::Display for ReadData {
     }
 }
 
+/// Returns the reverse complement of a DNA sequence.
+/// Supports A, T, C, G, N (case-insensitive).
+pub fn rev_compl(seq: &str) -> String {
+    seq.chars()
+        .rev()
+        .map(|base| match base.to_ascii_uppercase() {
+            'A' => 'T',
+            'T' => 'A',
+            'C' => 'G',
+            'G' => 'C',
+            'N' => 'N',
+            _ => 'N', // fallback for unknown bases
+        })
+        .collect()
+}
+
 impl ReadData {
     /// Extracts all required info from `bam_feature` and makes it thread-safe.
     pub fn new(
@@ -77,6 +93,7 @@ impl ReadData {
     pub fn from_singlecell_bowtie2<'a>(
         bam_feature: &'a Record,
         chromosome_mappings: &'a HashMap<i32, String>,
+        pseudo_umi: u64,
     ) -> Result<(String, Self), &'a str> {
         // Get the read ID (qname)
         let id = bam_feature.qname();
@@ -86,23 +103,22 @@ impl ReadData {
         let parts: Vec<&str> = id_str.split(':').collect();
         let cell_seq = parts.last().ok_or("missing read ID component")?;
 
+        if cell_seq.len() < 16 {
+            return Err("sequence too short to contain the cell id");
+        }
+
+        let cell_barcode = &rev_compl( &cell_seq )[0..16];
+
         // Check if the last part is a valid DNA string and split it
-        if !cell_seq.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
+        if !cell_barcode.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
             return Err("last part of ID is not a valid DNA sequence");
         }
-
-        if cell_seq.len() < 17 {
-            return Err("sequence too short to contain both cell and UMI");
-        }
-
-        let cell_barcode = &cell_seq[0..16];
-        let umi = &cell_seq[16..];
 
         //panic!("We have the cell id {} and the umi {} from the seq {}", cell_barcode, umi, cell_seq);
 
         // Now call your existing constructor for the record
         
-        Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_barcode, umi )
+        Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_barcode, pseudo_umi )
     }
 
     /// get_values_bulk extracts the values and creates a ReadData object.
@@ -111,7 +127,7 @@ impl ReadData {
         bam_feature: &'a Record,
         chromosmome_mappings: &'a HashMap<i32, String>,
         cell_id: &str,
-        umi: &str,  
+        umi_u64: u64,  
     ) -> Result<(String, Self), &'a str> {
         // Extract the chromosome (reference name)
         let chr = match chromosmome_mappings.get(&bam_feature.tid()) {
@@ -120,7 +136,7 @@ impl ReadData {
         };
 
         // Try to extract the UMI (UB), and report if missing
-        let umi_u64 = IntToStr::new(umi.into(), 32).unwrap().into_u64();
+        //let umi_u64 = IntToStr::new(umi.into(), 32).unwrap().into_u64();
 
         // Extract the start position (1-based for your GTF comparison)
         let start = bam_feature.pos(); // This is 0-based, needs adjustment for GTF

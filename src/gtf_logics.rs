@@ -323,6 +323,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
     let mut mut_idx = IndexedGenes::empty(Some(0));
 
     let mut singlets = HashMap::<String, ReadData>::new();
+    let mut pseuso_umi = 0_u64;
 
     for r in reader.records() {
         // Read a record from BAM file
@@ -338,9 +339,9 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
         lines += 1;
 
         // Choose the correct function to extract the data based on the AnalysisType
-        let data_tuple =  ReadData::from_singlecell_bowtie2( &record, &ref_id_to_name);
+        let data_tuple =  ReadData::from_singlecell_bowtie2( &record, &ref_id_to_name, pseuso_umi);
+        pseuso_umi +=1;
         
-
    
         match data_tuple {
             Ok(res) => {
