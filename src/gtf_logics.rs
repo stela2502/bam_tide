@@ -29,6 +29,8 @@ use rust_htslib::bam::Header;
 
 
 const BUFFER_SIZE: u64 = 1_000_000;
+const ATAC_BUFFER_SIZE: u64 = 10_000;
+
 
 use std::env;
 use lazy_static::lazy_static;
@@ -311,7 +313,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
     pb.set_message("");
 
     let mut lines = 0_u64;
-    let split = BUFFER_SIZE as usize * num_threads;
+    let split = ATAC_BUFFER_SIZE as usize * num_threads;
 
     println!("Using {} processors and processing {} reads per batch", num_threads, split);
 
