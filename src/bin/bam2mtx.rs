@@ -23,7 +23,7 @@ use clap::{Parser};
 
 
 /// This tool can quantify a bam file from both single cell data as well as bulk data.
-/// The default is to quantify single cell data from using the velocyto input format
+/// The default is to quantify single cell data from the BD Rhapsody tool.
 /// with these default settings: --cell_tag CB --umi_tag UB --analysis_type single-cell --match_type exact --gtf_type genes.
 /// Switching to --analysis_type "bulk" will create the mtx out files for one single cell id: "1"
 /// Switching to --match_type "overlap" will quantify reads in a sticky way - any overlap will be called a match - even paired ones!!

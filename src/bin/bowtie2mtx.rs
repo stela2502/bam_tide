@@ -24,11 +24,8 @@ use std::time::SystemTime;
 use clap::{Parser};
 
 
-/// This tool is used to 
-/// with these default settings: --match_type exact --gtf_type genes.
-/// Switching to --analysis_type "bulk" will create the mtx out files for one single cell id: "1" (untested)
-/// Switching to --match_type "overlap" will quantify reads in a sticky way - any overlap will be called a match - even paired ones!!
-/// Switching to --gtf_type "exons" will quantify exons instead of genes - make sure our exons are uniquely named!
+/// Under devlopment: This tool is used to collect the coverage and mutation loads from a BAM file.
+/// At the moment the results from this program are buggy!
 #[derive(Parser)]
 #[clap(version = "0.4.3", author = "Stefan L. <stefan.lang@med.lu.se>")]
 struct Opts {

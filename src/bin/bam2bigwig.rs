@@ -30,7 +30,7 @@ struct Args {
     #[clap(short, long, value_enum, default_value = "not")]
     normalize: Normalize,
 
-    /// Bin width for coverage calculation (default: 50bp).
+    /// Bin width for coverage calculation.
     #[arg(short, long, default_value_t = 50)]
     width: usize,
 }

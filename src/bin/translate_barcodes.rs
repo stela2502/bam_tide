@@ -10,13 +10,12 @@ use bam_tide::ATACtoRNAMapper; // adjust based on your project structure
 
 use rustody::int_to_str::IntToStr;
 
-/// Simple program to translate ATAC barcodes to RNA barcodes
 #[derive(Parser)]
 #[command(name = "translate_barcodes")]
 #[command(version = "1.0")]
-#[command(about = "Translates 10x barcodes.tsv.gz using ATACtoRNAMapper", long_about = None)]
+#[command(about = "Translates 10x barcodes.tsv.gz using HashMaps created by generate_atac_to_rna_hashmap.", long_about = None)]
 struct Cli {
-    /// Path to the ATAC-to-RNA translation binary file
+    /// Optional, a path to the ATAC-to-RNA translation binary file
     #[arg(short, long)]
     map: Option<PathBuf>,
 
