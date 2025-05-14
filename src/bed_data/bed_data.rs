@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Write};
-//use tokio::runtime::Runtime;
 //use std::thread::Builder;
 
 use bigtools::BigWigWrite;
@@ -25,6 +24,7 @@ use crate::bed_data::ChrArea;
 use rustody::genes_mapper::cigar::Cigar;
 use rustody::mapping_info::MappingInfo;
 use rustody::singlecelldata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHash};
+
 
 
 //const BUFFER_SIZE: usize = 1_000_000;
@@ -569,6 +569,9 @@ impl BedData {
         // Write data using the runtime
         outb.write(data, runtime)
         .map_err(|e| format!("Failed to write BigWig file: {}", e))?;
+
+        // brute force - hope this will bee enough!
+		std::thread::sleep(std::time::Duration::from_secs(10));
 
         Ok(())
     }
