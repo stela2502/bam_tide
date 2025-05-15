@@ -188,9 +188,8 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "bigtools"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83e0a7f18529896a324e1bb0a733e258c285e10564e21d1aba24216666e52867"
+version = "0.5.7-dev"
+source = "git+https://github.com/stela2502/bigtools.git#ded13ee481cab6002e0ab2c6a2abb07d791572d1"
 dependencies = [
  "anyhow",
  "attohttpc",
