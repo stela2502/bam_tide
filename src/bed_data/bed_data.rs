@@ -365,7 +365,7 @@ impl BedData {
 		    				self.coverage_data[index] += 1.0;
 			                //println!("Adding a one to the data in index {index}");
 			            }else {
-			            	panic!( "pos {} is outside of the chromsome?! {chrom_length}", id as usize * self.bin_width )
+			            	panic!( "pos {} is outside of the chromsome {chrom_name}:0-{chrom_length}", id as usize * self.bin_width )
 			            }
 			            
 			        }

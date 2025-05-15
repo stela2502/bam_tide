@@ -5,7 +5,8 @@ edition = "2021"
 
 
 [dependencies]
-bigtools = "0.5.4"
+#bigtools = "0.5.4"
+bigtools = { git="https://github.com/stela2502/bigtools.git" }
 clap = { version = "4.0", features = ["derive"] }
 directories = "5"
 flate2 = "*"
