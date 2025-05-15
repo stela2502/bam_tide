@@ -307,7 +307,7 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
         let mut idx = IndexedGenes::empty(Some(0));
         let cell_id = 1_u64;
 
-
+        let mut id = 0_u64;
         for r in reader.records() {
             // Read a record from BAM file
             let record = match r {
@@ -316,10 +316,12 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
             };
             let mut ref_id_to_name = HashMap::<i32, String>::new();
             ref_id_to_name.insert( 0, "chr1".to_string() );
-            match ReadData::from_singlecell_bowtie2(&record, &ref_id_to_name) {
+            id +=1;
+            match ReadData::from_singlecell_bowtie2(&record, &ref_id_to_name, id) {
                 Ok((_id, read)) => {
                     // Process the read if successful
-                    processor.handle_mutations(&read, "unknown", &mut idx, &mut gex, &mut mapping_info, &cell_id);
+                    processor.handle_mutations(&read, "unknown", &mut idx, &mut gex, 
+                        &mut mapping_info, &cell_id, None);
                 },
                 Err(e) => {
                     // Handle the error, log it, and continue processing
@@ -331,9 +333,9 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
         }
 
         assert_eq!( idx.get_all_gene_names().len(), 2, "detected only one mutation {:?}", idx.get_all_gene_names() );
-        assert_eq!( idx.get_all_gene_names()[0], "unknown/chr1/chr1:g.7G>T" );
+        assert_eq!( idx.get_all_gene_names()[0], "unknown/unknown/chr1:g.7G>T" );
         //assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.7G>T" );
-        assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.8A>C" );
+        assert_eq!( idx.get_all_gene_names()[1], "unknown/unknown/chr1:g.8A>C" );
 
         // check if the cell names make sense
         let file_path = PathBuf::from("test_output/mutations");

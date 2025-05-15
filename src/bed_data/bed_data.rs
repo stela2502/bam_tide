@@ -551,7 +551,7 @@ impl BedData {
 	pub fn write_bigwig( &self, file: &str) -> Result<(),String>{	
 
 		let runtime = tokio::runtime::Builder::new_multi_thread()
-		.worker_threads( self.threads )
+		.worker_threads( 1 )
 		.build()
 		.expect("Unable to create runtime.");
 

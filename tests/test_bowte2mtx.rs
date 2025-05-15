@@ -59,7 +59,7 @@ fn test_bam2bedgraph() {
     // Convert output to string
     let output_str = String::from_utf8_lossy(&output.stdout);
 
-    let file_path = PathBuf::from("testData/output/mutations/bowtie2mtx/_mutations");
+    let file_path = PathBuf::from("testData/output/mutations/bowtie2mtx/mutations");
 
     let expected_files = vec![
         "barcodes.tsv.gz",
