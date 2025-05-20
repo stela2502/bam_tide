@@ -3,10 +3,9 @@ name = "bam_tide"
 version = "0.1.0"
 edition = "2021"
 
-
 [dependencies]
-#bigtools = "0.5.4"
-bigtools = { git="https://github.com/stela2502/bigtools.git" }
+bigtools = "0.5.4"
+#bigtools = { git="https://github.com/stela2502/bigtools.git" }
 clap = { version = "4.0", features = ["derive"] }
 directories = "5"
 flate2 = "*"
@@ -18,5 +17,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 rayon = "1.5"
 regex = "1"
 rustody = { git = "https://github.com/stela2502/Rustody", branch ="main2" }
-rust-htslib = "0.49.0"
+rust-htslib = { version = "0.49.0", features = ["static"] }
+#rust-htslib = "0.49.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+

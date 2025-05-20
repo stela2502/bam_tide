@@ -4,7 +4,7 @@ use bam_tide::gtf_logics::{ AnalysisType };
 
 /// A command-line tool for converting BAM coverage data to BigWig format.
 #[derive(Parser, Debug)]
-#[clap(version = "0.0.1", author = "Stefan L. <stefan.lang@med.lu.se>")]
+#[clap(version = "0.0.2", author = "Stefan L. <stefan.lang@med.lu.se>")]
 struct Args {
     /// Input BAM file (sorted by chromosome position).
     #[arg(short, long)]

@@ -288,8 +288,8 @@ impl BedData {
 
 	                            let mut covered_regions = Vec::new();
 
-	                            let first_read_regions = cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start, add_introns );
-	                            let second_read_regions = cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns);
+	                            let first_read_regions = cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start -1, add_introns );
+	                            let second_read_regions = cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start -1, add_introns);
 
 	                            covered_regions.extend(first_read_regions);
 	                            covered_regions.extend(second_read_regions);
@@ -365,7 +365,7 @@ impl BedData {
 		    				self.coverage_data[index] += 1.0;
 			                //println!("Adding a one to the data in index {index}");
 			            }else {
-			            	panic!( "pos {} is outside of the chromsome {chrom_name}:0-{chrom_length}", id as usize * self.bin_width )
+			            	eprintln!( "pos {} is outside of the chromsome {chrom_name}:0-{chrom_length}", id as usize * self.bin_width )
 			            }
 			            
 			        }
