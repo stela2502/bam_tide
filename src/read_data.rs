@@ -6,6 +6,8 @@ use rustody::int_to_str::IntToStr;
 
 use core::fmt;
 
+
+/// This class converts the start from bam (0 based) to Gtf (1 based)
 #[derive(Debug, Clone)]
 pub struct ReadData {
     pub cell_id: String,
@@ -61,7 +63,7 @@ impl ReadData {
         Self {
             cell_id: cell_id.to_string(),
             umi,
-            start: start + 1, // Convert BAM to GTF notation
+            start: start+1, // Convert BAM to GTF notation
             flag: BamFlag::new( flag ),
             cigar: cigar.to_string(),
             chromosome: chromosome.to_string(),

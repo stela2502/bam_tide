@@ -4,7 +4,7 @@ use bam_tide::gtf_logics::{ AnalysisType };
 
 /// A command-line tool for converting BAM coverage data to BigWig format.
 #[derive(Parser, Debug)]
-#[clap(version = "0.0.2", author = "Stefan L. <stefan.lang@med.lu.se>")]
+#[clap(version = "0.0.3", author = "Stefan L. <stefan.lang@med.lu.se>")]
 struct Args {
     /// Input BAM file (sorted by chromosome position).
     #[arg(short, long)]
@@ -33,6 +33,11 @@ struct Args {
     /// Bin width for coverage calculation.
     #[arg(short, long, default_value_t = 50)]
     width: usize,
+
+    /// Collect only R1 areas
+    #[arg( long )]
+    only_r1: bool,
+
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,7 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cell_tag: [u8; 2] = args.cell_tag.unwrap_or_else(|| "CB".to_string()).into_bytes().try_into().expect("umi-tag must be exactly 2 chars long");
 
     let add_introns = false;
-    let mut bed_data = BedData::new( &args.bam, args.width, 2, &args.analysis_type, &cell_tag, &umi_tag, add_introns);
+    let mut bed_data = BedData::new( &args.bam, args.width, 2, 
+        &args.analysis_type, &cell_tag, &umi_tag, add_introns, args.only_r1 );
 
     bed_data.normalize( &args.normalize );
 

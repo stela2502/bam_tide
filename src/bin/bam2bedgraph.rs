@@ -45,6 +45,10 @@ struct Args {
     /// Bin width for coverage calculation (default: 50bp).
     #[arg(short, long, default_value_t = 50)]
     width: usize,
+
+    /// Collect only R1 areas
+    #[arg( long )]
+    only_r1: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let add_introns = false;
-    let mut bed_data = BedData::new( &args.bam, args.width, 2, &args.analysis_type, &cell_tag, &umi_tag, add_introns);
+    let mut bed_data = BedData::new( &args.bam, args.width, 2, &args.analysis_type, &cell_tag, &umi_tag, add_introns, args.only_r1);
 
     
     bed_data.normalize( &args.normalize );

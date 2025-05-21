@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Write};
-//use std::thread::Builder;
+
+use std::thread::Builder;
 
 use bigtools::BigWigWrite;
 use bigtools::beddata::BedParserStreamingIterator;
@@ -231,15 +232,18 @@ impl BedData {
 		}
 	}
 // Constructor to initialize a BedData instance
-    pub fn new(bam_file: &str , bin_width: usize, threads:usize, analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool ) -> Self {
+    pub fn new(bam_file: &str , bin_width: usize, threads:usize, 
+    	analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], 
+    	add_introns:bool, only_r1: bool ) -> Self {
     	
     	let mut ret = Self::init( bam_file, bin_width, threads );
 
-    	ret.process_bam(bam_file, analysis_type, cell_tag, umi_tag, add_introns );
+    	ret.process_bam(bam_file, analysis_type, cell_tag, umi_tag, add_introns, only_r1 );
     	ret
     }
 
-	pub fn process_bam( &mut self, bam_file: &str, analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool ) {
+	pub fn process_bam( &mut self, bam_file: &str, analysis_type: &AnalysisType, 
+		cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool, only_r1: bool ) {
 
 
 		let mut reader = match Reader::from_path(bam_file) {
@@ -288,21 +292,30 @@ impl BedData {
 
 	                            let mut covered_regions = Vec::new();
 
-	                            let first_read_regions = cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start -1, add_introns );
-	                            let second_read_regions = cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start -1, add_introns);
-
-	                            covered_regions.extend(first_read_regions);
-	                            covered_regions.extend(second_read_regions);
-
-	                            Some(covered_regions)
-                        		/*
-	                            // add a +1 to the whole region.
-	                            else if first_read.start < read_data.start {
-	                            	Some((first_read.start, first_read.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ), )
+	                            if only_r1 {
+	                            	#[cfg(debug_assertions)]
+	                            	println!("Collecting only R1 for {:?}", read_data);
+	                            	let regions = if first_read.flag.is_read1() {
+										cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start, add_introns )
+	                            	}else {
+	                            		cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns)
+	                            	};
+	                            	#[cfg(debug_assertions)]
+	                            	println!("Adding regions {:?}", regions);
+	                            	covered_regions.extend(regions);
 	                            }else {
-	                            	Some((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &first_read.cigar ).1 as i32 ))
-	                            }*/
-
+	                            	#[cfg(debug_assertions)]
+	                            	println!("Collectiong both reads {:?}", read_data);
+	                            	let first_read_regions = cigar.read_on_database_matching_positions( &first_read.cigar, first_read.start, add_introns );
+		                            let second_read_regions = cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns);
+		                            #[cfg(debug_assertions)]
+		                            println!("Adding regions {:?}", first_read_regions);
+		                            #[cfg(debug_assertions)]
+		                            println!("Adding regions {:?}", second_read_regions);
+		                            covered_regions.extend(first_read_regions);
+		                            covered_regions.extend(second_read_regions);     
+		                        }
+								Some(covered_regions)
 	                        }
 	                        None => {
 	                            // Handle orphaned reads (mate unmapped)
@@ -327,8 +340,9 @@ impl BedData {
 	                    // Unpaired read (not part of a pair at all)
 	                    #[cfg(debug_assertions)]
 	                    println!("Unpaired read: {}", read_data);
-
+	                    //println!("got unparired read {read_data} and \n{:?} regions from that", cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns ));
 	                    Some (cigar.read_on_database_matching_positions( &read_data.cigar, read_data.start, add_introns ))
+
                         //Some ((read_data.start, read_data.start + cigar.calculate_covered_nucleotides( &read_data.cigar ).1 as i32 ))
                     }
                 }
@@ -347,6 +361,10 @@ impl BedData {
 		        pb.inc(1);
 		    }*/
 
+
+			#[cfg(debug_assertions)]
+		    println!("got these regions back: {:?}", region );
+		    
 		    if let Some(vec) = region {
 		    	//println!("I got {} regions to process!", vec.len());
 		    	for (start, end) in vec {
@@ -356,7 +374,7 @@ impl BedData {
 
 		    		#[allow(unused_variables)]
 		    		let (chrom_name, chrom_length, chrom_offset) = &self.genome_info[ record.tid()as usize ];
-
+		    		//println!("processing ids {start_window}..={end_window}");
 		    		for id in start_window..=end_window {
 		    			#[cfg(debug_assertions)]
 		    			println!("add to {chrom_name}:{} - +50", id* self.bin_width );
@@ -382,8 +400,8 @@ impl BedData {
 	    for region in &singlets {
 
 	    	for (start, end) in cigar.read_on_database_matching_positions( &region.1.cigar, region.1.start, add_introns ){
-	    		let start_window = (start +1) / self.bin_width;
-	    		let end_window = (end +1 )/ self.bin_width;
+	    		let start_window = (start ) / self.bin_width;
+	    		let end_window = (end  )/ self.bin_width;
 	    		self.nreads +=1;
 
 	    		#[allow(unused_variables)]
@@ -550,28 +568,38 @@ impl BedData {
 
 	pub fn write_bigwig( &self, file: &str) -> Result<(),String>{	
 
+		let outfile = Path::new(file);
+		// Create the BigWig writer
+		let chrom_map: HashMap<String, u32> = self.genome_info.iter().map(|(chrom, len, _)| (chrom.clone(), *len as u32)).collect();
+
+		let mut outb = BigWigWrite::create_file(outfile, chrom_map)
+		.map_err(|e| format!("Failed to create BigWig file: {}", e))?;
+
+		// set to single process writer as the other breaks!
+		outb.options.channel_size = 0;
+		outb.options.max_zooms = 1;
+    	outb.options.manual_zoom_sizes = None;
+    	outb.options.compress = true;
+    	//outb.options.input_sort_type = input_sort_type;
+    	//outb.options.block_size = args.write_args.block_size;
+    	outb.options.inmemory = false;
+
+        let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+
+		/*
 		let runtime = tokio::runtime::Builder::new_multi_thread()
 		.worker_threads( 1 )
 		.build()
 		.expect("Unable to create runtime.");
+		*/
 
 		let iter = DataIter::new( self );
 		let data = BedParserStreamingIterator::wrap_infallible_iter(iter, true);
 
-		let chrom_map: HashMap<String, u32> = self.genome_info.iter().map(|(chrom, len, _)| (chrom.clone(), *len as u32)).collect();
-
-		let outfile = Path::new(file);
-
-		// Create the BigWig writer
-		let outb = BigWigWrite::create_file(outfile, chrom_map)
-		.map_err(|e| format!("Failed to create BigWig file: {}", e))?;
-
+		
         // Write data using the runtime
         outb.write(data, runtime)
         .map_err(|e| format!("Failed to write BigWig file: {}", e))?;
-
-        // brute force - hope this will bee enough!
-		std::thread::sleep(std::time::Duration::from_secs(10));
 
         Ok(())
     }

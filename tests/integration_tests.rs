@@ -25,7 +25,7 @@ fn test_bam_to_bigwig() {
     }
 
     // Run the function
-    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false );
+    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false, false );
 
     let result = BedData::write_bedgraph( &data, bigwig_file );
 
@@ -54,7 +54,7 @@ fn test_bam_to_bedgraph() {
     }
 
     // Run the function
-    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false );
+    let data =  BedData::new( bam_file, 50, 1, &AnalysisType::Bulk, &b"CR", &b"No", false, false );
     let result = BedData::write_bedgraph( &data, bg_file );
 
     // Assert success
