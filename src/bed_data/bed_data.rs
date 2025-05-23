@@ -234,16 +234,16 @@ impl BedData {
 // Constructor to initialize a BedData instance
     pub fn new(bam_file: &str , bin_width: usize, threads:usize, 
     	analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], 
-    	add_introns:bool, only_r1: bool ) -> Self {
+    	add_introns:bool, only_r1: bool, min_mapping_quality:u8  ) -> Self {
     	
     	let mut ret = Self::init( bam_file, bin_width, threads );
 
-    	ret.process_bam(bam_file, analysis_type, cell_tag, umi_tag, add_introns, only_r1 );
+    	ret.process_bam(bam_file, analysis_type, cell_tag, umi_tag, add_introns, only_r1, min_mapping_quality );
     	ret
     }
 
 	pub fn process_bam( &mut self, bam_file: &str, analysis_type: &AnalysisType, 
-		cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool, only_r1: bool ) {
+		cell_tag: &[u8;2], umi_tag: &[u8;2], add_introns:bool, only_r1: bool, min_mapping_quality:u8 ) {
 
 
 		let mut reader = match Reader::from_path(bam_file) {
@@ -267,6 +267,9 @@ impl BedData {
 	        	Ok(r) => r,
 	        	Err(e) => panic!("I could not collect a read: {e:?}"),
 	        };
+	        if record.mapq() < min_mapping_quality{
+	        	continue;
+	        }
 			// Choose the correct function to extract the data based on the AnalysisType
 			let data_tuple = match *analysis_type {
 				AnalysisType::SingleCell => ReadData::from_single_cell(&record, &ref_id_to_name, &cell_tag, &umi_tag),
@@ -364,7 +367,7 @@ impl BedData {
 
 			#[cfg(debug_assertions)]
 		    println!("got these regions back: {:?}", region );
-		    
+
 		    if let Some(vec) = region {
 		    	//println!("I got {} regions to process!", vec.len());
 		    	for (start, end) in vec {

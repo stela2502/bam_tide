@@ -38,6 +38,10 @@ struct Args {
     #[arg( long )]
     only_r1: bool,
 
+    /// Minimum mapping quality to include a read
+    #[arg(long, default_value_t = 0)]
+    min_mapping_quality: u8,
+
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let add_introns = false;
     let mut bed_data = BedData::new( &args.bam, args.width, 2, 
-        &args.analysis_type, &cell_tag, &umi_tag, add_introns, args.only_r1 );
+        &args.analysis_type, &cell_tag, &umi_tag, add_introns, 
+        args.only_r1, args.min_mapping_quality );
 
     bed_data.normalize( &args.normalize );
 

@@ -63,7 +63,7 @@ impl ReadData {
         Self {
             cell_id: cell_id.to_string(),
             umi,
-            start: start+1, // Convert BAM to GTF notation
+            start: start, // Convert BAM to GTF notation
             flag: BamFlag::new( flag ),
             cigar: cigar.to_string(),
             chromosome: chromosome.to_string(),
@@ -95,7 +95,7 @@ impl ReadData {
     pub fn from_singlecell_bowtie2<'a>(
         bam_feature: &'a Record,
         chromosome_mappings: &'a HashMap<i32, String>,
-        pseudo_umi: u64,
+        pseudo_umi: u64
     ) -> Result<(String, Self), &'a str> {
         // Get the read ID (qname)
         let id = bam_feature.qname();
@@ -129,7 +129,7 @@ impl ReadData {
         bam_feature: &'a Record,
         chromosmome_mappings: &'a HashMap<i32, String>,
         cell_id: &str,
-        umi_u64: u64,  
+        umi_u64: u64
     ) -> Result<(String, Self), &'a str> {
         // Extract the chromosome (reference name)
         let chr = match chromosmome_mappings.get(&bam_feature.tid()) {
@@ -167,8 +167,7 @@ impl ReadData {
         bam_feature: &'a Record,
         chromosmome_mappings: &'a HashMap<i32, String>,
         bam_cell_tag: &[u8; 2],
-        bam_umi_tag: &[u8; 2],
-    ) -> Result<(String, Self), &'a str> {
+        bam_umi_tag: &[u8; 2]    ) -> Result<(String, Self), &'a str> {
         
         let cell_id = match Self::get_tag_value(bam_feature, bam_cell_tag) {
             Some(id) => id, // Convert to string, or use empty string
@@ -184,7 +183,7 @@ impl ReadData {
         chromosmome_mappings: &'a HashMap<i32, String>,
         bam_umi_tag: &[u8; 2],
         pseudo_umi: u64,
-        cell_id: &str,
+        cell_id: &str
     ) -> Result<(String, Self), &'a str> {
         // Extract the chromosome (reference name)
         let chr = match chromosmome_mappings.get(&bam_feature.tid()) {
@@ -210,7 +209,7 @@ impl ReadData {
         let res = Self::new(
             cell_id,
             umi_u64,
-            (start + 1).try_into().unwrap(), // Adjust for GTF 1-based start
+            (start).try_into().unwrap(), // Adjust for GTF 1-based start
             bam_feature.flags(),
             &bam_feature.cigar().to_string(),
             chr,
