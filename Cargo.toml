@@ -3,6 +3,12 @@ name = "bam_tide"
 version = "0.4.0"
 edition = "2021"
 
+[profile.release]
+strip = true
+opt-level = 3         # Maximum speed
+lto = true              # Best of both worlds
+codegen-units = 1       # Optional: best codegen, slower build
+
 [dependencies]
 bigtools = "0.5.4"
 #bigtools = { git="https://github.com/stela2502/bigtools.git" }
