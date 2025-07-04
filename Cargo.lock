@@ -170,7 +170,6 @@ dependencies = [
  "flate2",
  "indicatif",
  "lazy_static",
- "needletail",
  "num_cpus",
  "openssl",
  "rayon",

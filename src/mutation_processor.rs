@@ -1,7 +1,12 @@
 //use regex::Regex;
 //use rustody::mapping_info::MappingInfo;
 //use rustody::genes_mapper::cigar::{Cigar, CigarEnum};
-use needletail::parse_fastx_file;
+
+use flate2::read::MultiGzDecoder;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
+use std::path::Path;
+
 use std::collections::HashMap;
 
 use rust_htslib::bam::{ Read, Reader, Header };
@@ -36,8 +41,17 @@ pub struct MutationProcessor {
 impl MutationProcessor {
 
 
+    fn open_fasta_reader<P: AsRef<Path>>(path: P) -> io::Result<Box<dyn BufRead>> {
+        let file = File::open(&path)?;
+        let reader: Box<dyn std::io::Read> = if path.as_ref().extension().map_or(false, |e| e == "gz") {
+            Box::new(MultiGzDecoder::new(file))
+        } else {
+            Box::new(file)
+        };
+        Ok(Box::new(BufReader::new(reader)))
+    }
     /// Initializes the MutationProcessor from a BAM header and a FASTA file
-    pub fn new( bam_file: &str, fasta: &str ) -> Result<Self, String> {
+    pub fn new( bam_file: &str, fasta_path: &str ) -> Result<Self, String> {
         
         let reader = match Reader::from_path(bam_file) {
             Ok(r) => r,
@@ -75,42 +89,55 @@ impl MutationProcessor {
         let mut genome = vec![0; total_length]; // Initialize with zeros
 
         // Load the FASTA file and populate the genome sequence
-        let mut fasta_file = parse_fastx_file(fasta).map_err(|_| "Invalid FASTA file path".to_string())?;
+        let reader = Self::open_fasta_reader(&fasta_path).map_err(|e| format!("Failed to open: {e}"))?;
+        let mut lines = reader.lines();
+
+        #[allow(unused_variables)]
         let mut found_chrs = 0;
+        let mut current_chr_id: Option<usize> = None;
+        let mut write_pos = 0;
+        let mut expected_len = 0;
 
-        while let Some(e_record) = fasta_file.next() {
-            let seqrec = e_record.map_err(|_| "Error parsing FASTA record".to_string())?;
-            match std::str::from_utf8(seqrec.id()) {
-                Ok(st) => {
-                    // Extract chromosome name from the FASTA header
-                    if let Some(orig_gname) = st.split(' ').next() {
-                        if let Some(&chr_id) = chr_names.get(orig_gname) {
-                            // We need that sequence
-                            let offset = genome_offsets[chr_id];
-                            let length = if chr_id + 1 < genome_offsets.len() {
-                                genome_offsets[chr_id + 1] - offset
-                            } else {
-                                total_length - offset
-                            };
-
-                            // Check length consistency
-                            if length != seqrec.seq().len() {
-                                return Err(format!(
-                                    "chr {} in fasta is not the expected size from the bam header bam: {} != fasta: {}",
-                                    orig_gname,
-                                    length,
-                                    seqrec.seq().len()
-                                ));
-                            } else {
-                                // Copy sequence into the genome vector
-                                genome[offset..(offset + length)]
-                                    .copy_from_slice(&seqrec.seq());
-                                found_chrs += 1;
-                            }
-                        }
+        while let Some(line) = lines.next() {
+            let line = line.map_err(|_| "Error reading FASTA".to_string())?;
+            if line.starts_with('>') {
+                // Header line
+                if let Some(chr_id) = current_chr_id {
+                    // Check previous chr finished
+                    if write_pos != expected_len {
+                        return Err(format!(
+                            "Chromosome sequence too short: expected {expected_len}, got {write_pos}"
+                        ));
                     }
                 }
-                Err(_) => return Err("Invalid FASTA sequence name".to_string()),
+
+                let chr_name = line[1..].split_whitespace().next().unwrap_or("");
+                if let Some(&chr_id) = chr_names.get(chr_name) {
+                    current_chr_id = Some(chr_id);
+                    write_pos = 0;
+                    let offset = genome_offsets[chr_id];
+                    expected_len = if chr_id + 1 < genome_offsets.len() {
+                        genome_offsets[chr_id + 1] - offset
+                    } else {
+                        total_length - offset
+                    };
+                    found_chrs += 1;
+                } else {
+                    current_chr_id = None; // skip unknown chromosomes
+                }
+            } else if let Some(chr_id) = current_chr_id {
+                // Sequence line
+                let offset = genome_offsets[chr_id];
+                let bytes = line.as_bytes();
+                let end = write_pos + bytes.len();
+                if end > expected_len {
+                    return Err(format!(
+                        "Chromosome {} longer than expected",
+                        chr_id
+                    ));
+                }
+                genome[offset + write_pos..offset + end].copy_from_slice(bytes);
+                write_pos = end;
             }
         }
 
