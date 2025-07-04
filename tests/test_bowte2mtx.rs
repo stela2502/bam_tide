@@ -1,10 +1,6 @@
 // Import necessary modules
 use std::process::Command;
-use std::fs::File;
 use std::fs;
-use std::io::BufReader;
-use std::io::BufRead;
-use std::collections::HashMap;
 use std::process::exit;
 use std::path::PathBuf;
 
@@ -57,7 +53,7 @@ fn test_bam2bedgraph() {
     // Check if the command was successful (exit code 0)
     assert!(output.status.success(), "{:?}", String::from_utf8_lossy(&output.stderr));
     // Convert output to string
-    let output_str = String::from_utf8_lossy(&output.stdout);
+    let _output_str = String::from_utf8_lossy(&output.stdout);
 
     let file_path = PathBuf::from("testData/output/mutations/bowtie2mtx/mutations");
 

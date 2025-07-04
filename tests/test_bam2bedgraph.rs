@@ -1,10 +1,10 @@
 // Import necessary modules
 use std::process::Command;
-use std::fs::File;
-use std::fs;
-use std::io::BufReader;
-use std::io::BufRead;
-use std::collections::HashMap;
+//use std::fs::File;
+//use std::fs;
+//use std::io::BufReader;
+//use std::io::BufRead;
+//use std::collections::HashMap;
 use std::process::exit;
 
 // bigwig should work as well - but it creates enormouse files as it adds the zeros in, too.

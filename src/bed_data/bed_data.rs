@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Write};
 
-use std::thread::Builder;
+//use std::thread::Builder;
 
 use bigtools::BigWigWrite;
 use bigtools::beddata::BedParserStreamingIterator;
@@ -202,7 +202,7 @@ impl BedData {
 		}
 	}
 
-	pub fn init( bam_file: &str, bin_width:usize, threads:usize )-> Self{
+	pub fn init( bam_file: &str, bin_width:usize, threads:usize, limit_to: Option<Vec<&str>> )-> Self{
 
 		let reader = match Reader::from_path(bam_file) {
     		Ok(r) => r,
@@ -212,7 +212,7 @@ impl BedData {
     	let header = Header::from_template(reader.header());
     	// (chr name, length, offset)
 
-		let genome_info:Vec<(String, usize, usize)> = BedData::create_ref_id_to_name_vec( &header,bin_width );
+		let genome_info:Vec<(String, usize, usize)> = BedData::create_ref_id_to_name_vec( &header,bin_width, limit_to );
 
 		let search = Self::genome_info_to_search( &genome_info );	  
 		let num_bins = genome_info
@@ -236,7 +236,7 @@ impl BedData {
     	analysis_type: &AnalysisType, cell_tag: &[u8;2], umi_tag: &[u8;2], 
     	add_introns:bool, only_r1: bool, min_mapping_quality:u8  ) -> Self {
     	
-    	let mut ret = Self::init( bam_file, bin_width, threads );
+    	let mut ret = Self::init( bam_file, bin_width, threads, None );
 
     	ret.process_bam(bam_file, analysis_type, cell_tag, umi_tag, add_introns, only_r1, min_mapping_quality );
     	ret
@@ -275,12 +275,17 @@ impl BedData {
 				AnalysisType::SingleCell => ReadData::from_single_cell(&record, &ref_id_to_name, &cell_tag, &umi_tag),
 				AnalysisType::Bulk => ReadData::from_bulk(&record, &ref_id_to_name, &umi_tag, lines, "1"),
 			};
+			
 
 	        // Here we really only need start and end at the moment.
 	        let region: Option<Vec<(usize, usize)>> = match data_tuple {
 	        	Ok(ref res) => {
 	                let qname = &res.0; // Cell ID or read name as key
 	                let read_data = &res.1;
+
+	                if self.search.get(qname).is_none() {
+						continue;
+					}
 
 	                if read_data.is("paired") {
 	                	match singlets.remove(qname) {
@@ -494,7 +499,7 @@ impl BedData {
 	/// `bin_width` is the size of each bin.
 	/// returns a vector with (chromsome name, chr length, chr offset - for this chromosome )
 	/// later called "annotation table"
-	pub fn create_ref_id_to_name_vec( header: &Header, bin_width: usize) -> Vec<(String, usize, usize)> {
+	pub fn create_ref_id_to_name_vec( header: &Header, bin_width: usize, limit_to: Option<Vec<&str>>) -> Vec<(String, usize, usize)> {
 
 		let header_map = header.to_hashmap();
 		let mut ref_id_to_name = Vec::with_capacity(30);
@@ -506,6 +511,12 @@ impl BedData {
 	                // The "LN" tag holds the length of the chromosome
 	                if let Ok(length_int) = length.parse::<usize>() {
 	                	if let Some(name) = record.get("SN") {
+	                		// If limit_to is Some, check if this name is included
+	                        if let Some(ref allowed_names) = limit_to {
+	                            if !allowed_names.iter().any(|&allowed| allowed == name) {
+	                                continue; // skip this chromosome if not in limit_to
+	                            }
+	                        }
 	                    	// Calculate number of bins for this chromosome
 	                    	let bins = (length_int as usize + bin_width - 1) / bin_width;
 

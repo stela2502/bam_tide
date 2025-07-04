@@ -295,7 +295,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
     gtf: &T,
     num_threads: usize,
     mutations: &Option<MutationProcessor>,
-    _analysis_type: &AnalysisType,
+    analysis_type: &AnalysisType,
     match_type: &MatchType,
     ) -> Result<( (SingleCellData, IndexedGenes),(SingleCellData, IndexedGenes) ), String> {
 
@@ -343,7 +343,13 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
         lines += 1;
 
         // Choose the correct function to extract the data based on the AnalysisType
-        let data_tuple =  ReadData::from_singlecell_bowtie2( &record, &ref_id_to_name, pseuso_umi);
+        let data_tuple = match analysis_type{
+            AnalysisType::SingleCell => 
+                ReadData::from_singlecell_bowtie2(&record, &ref_id_to_name, pseuso_umi),
+            AnalysisType::Bulk => 
+                ReadData::from_bulk_bowtie2(&record, &ref_id_to_name, "1", lines),
+
+        };
         pseuso_umi +=1;
         
    

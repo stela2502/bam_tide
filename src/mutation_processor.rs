@@ -115,6 +115,8 @@ impl MutationProcessor {
         }
 
         // Ensure all chromosomes from BAM header are found in the FASTA file
+        // Or actually - do not do that here....
+        /*
         if found_chrs != chr_names.len() {
             return Err(format!(
                 "Missing {} chromosomes expected from the bam file header: {:?}",
@@ -122,6 +124,7 @@ impl MutationProcessor {
                 chr_names
             ));
         }
+        */
 
         // Return the initialized MutationProcessor
         Ok(MutationProcessor {
@@ -189,7 +192,7 @@ impl MutationProcessor {
                     }
                     // When we encounter a mismatch, we construct the mutation string
                     //println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
-                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos ];// Get the reference base at current position
+                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos -1];// Get the reference base at current position
                     let alt_base = c;
 
                     let addon = match find_area_for_pos( current_pos, &guhs){
@@ -264,9 +267,9 @@ mod tests {
     }
     
     use std::path::PathBuf;
-    use flate2::read::GzDecoder;
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    //use flate2::read::GzDecoder;
+    //use std::fs::File;
+    //use std::io::{BufRead, BufReader};
     use std::fs;
 
 
@@ -333,16 +336,19 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
         }
 
         assert_eq!( idx.get_all_gene_names().len(), 2, "detected only one mutation {:?}", idx.get_all_gene_names() );
-        assert_eq!( idx.get_all_gene_names()[0], "unknown/unknown/chr1:g.7G>T" );
+        //MD:Z:6T3
+        assert_eq!( idx.get_all_gene_names()[0], "unknown/unknown/chr1:g.6T>G" );
         //assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.7G>T" );
-        assert_eq!( idx.get_all_gene_names()[1], "unknown/unknown/chr1:g.8A>C" );
+        //MD:Z:2T7
+        assert_eq!( idx.get_all_gene_names()[1], "unknown/unknown/chr1:g.2A>T" );
 
         // check if the cell names make sense
         let file_path = PathBuf::from("test_output/mutations");
         if file_path.exists() {
             fs::remove_dir_all(&file_path).expect("Failed to remove existing directory");
         }
-        gex.write_sparse( file_path.clone(), &idx, 0 );
+
+        gex.write_sparse( file_path.clone(), &idx, 0 ).expect("Failed to write sparse matrix");
 
         let expected_files = vec![
             "barcodes.tsv.gz",

@@ -99,7 +99,7 @@ fn main() {
     // Parse BAM and GTF
     println!("creating Bed coverage info");
     
-    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads );
+    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads, Some(vec!["chrM", "M", "chrMT", "MT" ]) );
 
     println!("Created {} bed areas", bed.coverage_data.len() );
 
