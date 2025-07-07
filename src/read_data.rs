@@ -109,10 +109,9 @@ impl ReadData {
             return Err("sequence too short to contain the cell id");
         }
 
-        let cell_barcode = &rev_compl( &cell_seq )[0..16];
-
         // Check if the last part is a valid DNA string and split it
-        if !cell_barcode.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
+        if !cell_seq.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+            //panic!("Problem: this is not a cell id: {}",  cell_seq);
             return Err("last part of ID is not a valid DNA sequence");
         }
 
@@ -120,7 +119,7 @@ impl ReadData {
 
         // Now call your existing constructor for the record
         
-        Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_barcode, pseudo_umi )
+        Self::from_bulk_bowtie2(bam_feature, chromosome_mappings, cell_seq , pseudo_umi )
     }
 
     /// get_values_bulk extracts the values and creates a ReadData object.
