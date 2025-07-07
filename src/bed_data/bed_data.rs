@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Write};
+use std::fmt;
 
 //use std::thread::Builder;
 
@@ -71,7 +72,7 @@ pub enum Normalize {
     Rpgc,
 }
 
-
+#[derive(Debug)]
 pub struct BedData {
     pub genome_info: Vec<(String, usize, usize)>, // (chromosome name, length, bin offset)
     pub search: HashMap<String, usize>, // get id for chr
@@ -81,6 +82,18 @@ pub struct BedData {
     pub nreads: usize,
 }
 
+impl fmt::Display for BedData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "BedData Report:")?;
+        writeln!(f, "  Bin width: {}", self.bin_width)?;
+        writeln!(f, "  Processed reads: {}", self.nreads)?;
+        writeln!(f, "  Genome Info:")?;
+        for (chr, len, offset) in &self.genome_info {
+            writeln!(f, "    - Chr: {}, Length: {}, Bin offset: {}", chr, len, offset)?;
+        }
+        Ok(())
+    }
+}
 
 impl FeatureMatcher for BedData{
 
@@ -142,7 +155,7 @@ impl FeatureMatcher for BedData{
 
         	self.collect_ghus( &mate, &mut guhs, exp_idx );
         	if let Some(processor) = mutations {
-	             processor.handle_mutations( primary_read, "unknown", mut_idx, mut_gex, mapping_info, &cell_id, self.collect_gene_areas(primary_read) );
+	             processor.handle_mutations( primary_read, "unknown", mut_idx, mut_gex, mapping_info, &cell_id, mate.sequence.len(), self.collect_gene_areas(primary_read) );
 	        }
         }
         self.collect_ghus( &primary_read, &mut guhs, exp_idx);
@@ -151,7 +164,7 @@ impl FeatureMatcher for BedData{
         	exp_gex.try_insert( &cell_id, *guh, mapping_info );
         }
         if let Some(processor) = mutations {
-             processor.handle_mutations( primary_read, "unknown", mut_idx, mut_gex, mapping_info, &cell_id, self.collect_gene_areas(primary_read) );
+             processor.handle_mutations( primary_read, "unknown", mut_idx, mut_gex, mapping_info, &cell_id, primary_read.sequence.len(), self.collect_gene_areas(primary_read) );
         }
     }
 
@@ -202,7 +215,7 @@ impl BedData {
 		}
 	}
 
-	pub fn init( bam_file: &str, bin_width:usize, threads:usize, limit_to: Option<Vec<&str>> )-> Self{
+	pub fn init( bam_file: &str, bin_width:usize, threads:usize, limit_to: Option<Vec<String>> )-> Self{
 
 		let reader = match Reader::from_path(bam_file) {
     		Ok(r) => r,
@@ -267,28 +280,29 @@ impl BedData {
 	        	Ok(r) => r,
 	        	Err(e) => panic!("I could not collect a read: {e:?}"),
 	        };
-	        if record.mapq() < min_mapping_quality{
+	        /*if record.mapq() < min_mapping_quality{
+	        	println!("quality too low! {} < {}",record.mapq(), min_mapping_quality);
 	        	continue;
-	        }
+	        }*/
 			// Choose the correct function to extract the data based on the AnalysisType
 			let data_tuple = match *analysis_type {
 				AnalysisType::SingleCell => ReadData::from_single_cell(&record, &ref_id_to_name, &cell_tag, &umi_tag),
 				AnalysisType::Bulk => ReadData::from_bulk(&record, &ref_id_to_name, &umi_tag, lines, "1"),
 			};
 			
+			//println!("I got this data tuple: {data_tuple:?}");
 
 	        // Here we really only need start and end at the moment.
 	        let region: Option<Vec<(usize, usize)>> = match data_tuple {
-	        	Ok(ref res) => {
-	                let qname = &res.0; // Cell ID or read name as key
-	                let read_data = &res.1;
-
-	                if self.search.get(qname).is_none() {
+	        	Ok( (qname, read_data) ) => {
+	                if self.search.get(&read_data.chromosome).is_none() {
+	                	#[cfg(debug_assertions)]
+	                	println!("The qname {} is unknown to me?!", &read_data.chromosome);
 						continue;
 					}
 
 	                if read_data.is("paired") {
-	                	match singlets.remove(qname) {
+	                	match singlets.remove(&qname) {
 	                		Some(first_read) => {
 	                            // Mate found! Process the pair
 	                            #[cfg(debug_assertions)]
@@ -363,11 +377,6 @@ impl BedData {
 	                None
 	            }
 	        };
-
-		    /*if lines % BUFFER_SIZE == 0 {
-		        pb.set_message(format!("{} million reads processed", lines / BUFFER_SIZE));
-		        pb.inc(1);
-		    }*/
 
 
 			#[cfg(debug_assertions)]
@@ -499,7 +508,7 @@ impl BedData {
 	/// `bin_width` is the size of each bin.
 	/// returns a vector with (chromsome name, chr length, chr offset - for this chromosome )
 	/// later called "annotation table"
-	pub fn create_ref_id_to_name_vec( header: &Header, bin_width: usize, limit_to: Option<Vec<&str>>) -> Vec<(String, usize, usize)> {
+	pub fn create_ref_id_to_name_vec( header: &Header, bin_width: usize, limit_to: Option<Vec<String>>) -> Vec<(String, usize, usize)> {
 
 		let header_map = header.to_hashmap();
 		let mut ref_id_to_name = Vec::with_capacity(30);
@@ -513,7 +522,7 @@ impl BedData {
 	                	if let Some(name) = record.get("SN") {
 	                		// If limit_to is Some, check if this name is included
 	                        if let Some(ref allowed_names) = limit_to {
-	                            if !allowed_names.iter().any(|&allowed| allowed == name) {
+	                            if !allowed_names.iter().any(|allowed| allowed == name) {
 	                                continue; // skip this chromosome if not in limit_to
 	                            }
 	                        }

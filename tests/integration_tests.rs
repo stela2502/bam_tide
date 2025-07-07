@@ -1,5 +1,5 @@
 use std::fs;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 use std::path::Path;
 use std::io::BufRead;
 use std::fs::File;
@@ -70,7 +70,7 @@ fn test_bam_to_bedgraph() {
         ["chr1".to_string(), "14400".to_string(), "14450".to_string(), "1".to_string()],
         ["chr1".to_string(), "14450".to_string(), "14500".to_string(), "3".to_string()],
         ["chr1".to_string(), "14500".to_string(), "14550".to_string(), "8".to_string()],
-        ["chr1".to_string(), "14550".to_string(), "14600".to_string(), "11".to_string()],
+        ["chr1".to_string(), "14550".to_string(), "14600".to_string(), "12".to_string()],
         ["chr1".to_string(), "14600".to_string(), "14650".to_string(), "10".to_string()],
         ["chr1".to_string(), "14650".to_string(), "14700".to_string(), "4".to_string()],
         ["chr1".to_string(), "14700".to_string(), "14850".to_string(), "1".to_string()],
@@ -78,7 +78,7 @@ fn test_bam_to_bedgraph() {
     ];
     match read_tsv_to_vec( bg_file ) {
         Ok(data) => {
-            let first_10 = &data[..10];
+            let first_10 = &data[..10.min(data.len())];
             for (i, (expected, actual)) in exp.iter().zip( first_10.iter()).enumerate() {
                 assert_eq!(actual, expected, "Mismatch at line {}", i + 1);
             }

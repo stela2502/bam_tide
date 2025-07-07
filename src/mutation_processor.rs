@@ -7,8 +7,6 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
-use std::collections::HashMap;
-
 use rust_htslib::bam::{ Read, Reader, Header };
 
 use crate::read_data::ReadData;
@@ -20,6 +18,10 @@ use rustody::mapping_info::MappingInfo;
 use rustody::singlecelldata::cell_data::GeneUmiHash;
 
 use std::collections::HashSet;
+use std::collections::HashMap;
+
+use std::fmt;
+
 
 fn find_area_for_pos(pos: usize, areas: &Option<HashSet<ChrArea>>) -> Option<&ChrArea> {
     if let Some(areas) = &*areas {
@@ -32,11 +34,39 @@ fn find_area_for_pos(pos: usize, areas: &Option<HashSet<ChrArea>>) -> Option<&Ch
 pub struct MutationProcessor {
     /// the offsets for each chr
     genome_offsets: Vec<usize>,
-    // the chr names (for matching to the fasta names)
+    /// the chr names (for matching to the fasta names)
     chr_names: HashMap<String, usize>,
     /// the real genome vector
     genome: Vec<u8>,
+    /// The end of reads have overproportional high mutation counts - clip in percent
+    mut_clip: f32,
+    /// 1.0 - clip in percent
+    rev_mut_clip: f32,
+    /// a vec of mutation positions
+    pub hist: Vec<usize>, // this is a stub - will be replaced by whatever Rustody::mapping_info provides!
 } 
+
+
+impl fmt::Display for MutationProcessor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "MutationProcessor {{")?;
+        writeln!(f, "  chr_names: [{} entries]", self.chr_names.len())?;
+        writeln!(f, "  genome: [{} bases]", self.genome.len())?;
+        writeln!(f, "  mut_clip: {:.3}", self.mut_clip)?;
+        writeln!(f, "  hist: [{} entries]", self.hist.len())?;
+        
+        // Format each entry in hist with an index: "0: 123"
+        let hist_str = self.hist
+            .iter()
+            .enumerate()
+            .map(|(i, val)| format!("    {}: {}", i, val))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        writeln!(f, "  hist:\n{}", hist_str)?;
+        writeln!(f, "}}")
+    }
+}
 
 impl MutationProcessor {
 
@@ -51,7 +81,7 @@ impl MutationProcessor {
         Ok(Box::new(BufReader::new(reader)))
     }
     /// Initializes the MutationProcessor from a BAM header and a FASTA file
-    pub fn new( bam_file: &str, fasta_path: &str ) -> Result<Self, String> {
+    pub fn new( bam_file: &str, fasta_path: &str, mut_clip: f32 ) -> Result<Self, String> {
         
         let reader = match Reader::from_path(bam_file) {
             Ok(r) => r,
@@ -158,6 +188,9 @@ impl MutationProcessor {
             genome_offsets,
             chr_names,
             genome,
+            mut_clip,
+            rev_mut_clip: 1.0 - mut_clip,
+            hist : vec![0, 20 ],
         })
     }
 
@@ -169,6 +202,7 @@ impl MutationProcessor {
         mut_gex: &mut SingleCellData,
         mapping_info: &mut MappingInfo,
         cell_id: &u64,
+        read_len:usize,
         guhs: Option<HashSet::<ChrArea>>
     ) {
         
@@ -176,7 +210,9 @@ impl MutationProcessor {
             &data.chromosome,
             data.start.try_into().unwrap(),
             &data.cigar,
-            guhs
+            read_len,
+            guhs,
+            mapping_info
         ) {
 
             let snip = format!("{gene_id}/{}", mutation_name);
@@ -190,8 +226,7 @@ impl MutationProcessor {
     }
 
 
-
-    pub fn get_all_mutations(&self, chr_name: &str, start: usize, md_tag: &str, guhs: Option<HashSet::<ChrArea>> ) -> Vec<String> {
+    pub fn get_all_mutations(&self, chr_name: &str, start: usize, md_tag: &str, read_len:usize, guhs: Option<HashSet::<ChrArea>>, mapping_info: &mut MappingInfo, ) -> Vec<String> {
         let mut mutations = Vec::new();
         
         // Retrieve chromosome name
@@ -204,6 +239,30 @@ impl MutationProcessor {
         //let segments = md_tag.split(|c| c == 'A' || c == 'T' || c == 'C' || c == 'G');
         let mut match_len = 0;
 
+        let rl= read_len as f32;
+
+        let advance_if_needed = |current_pos: &mut usize, match_len: &mut usize| {
+            if *match_len > 0 {
+                *current_pos += *match_len;
+                *match_len = 0;
+            }
+        };
+
+        let ignore = |pos: usize, rl: f32| {
+            let rel = pos as f32 / rl;
+            /*println!( "For pos {pos} and read_length {rl}");
+            println!( "I'll check this: rel < self.mut_clip || rel > self.rev_mut_clip");
+            println!( "{rel} < {} || {rel} > {}", self.mut_clip, self.rev_mut_clip);*/
+
+            rel < self.mut_clip || rel > self.rev_mut_clip
+        };
+
+        let add_to_hist = |pos: usize, rl: f32, mapping_info: &mut MappingInfo |{
+            let rel = pos as f32 / rl;
+            let bin = (rel * mapping_info.hist.len() as f32 ).floor() as usize;
+            mapping_info.iterate_hist( bin );
+        };
+
         for c in md_tag.chars() {
             match c {
                 // Match or mismatch (number indicates match length)
@@ -213,13 +272,14 @@ impl MutationProcessor {
                 // Mismatch - the character in the MD string
                 'A' | 'T' | 'C' | 'G' => {
                     // First, move the current position based on the match length
-                    if match_len > 0 {
-                        current_pos += match_len;
-                        match_len = 0;  // Reset match length after moving
+                    advance_if_needed(&mut current_pos, &mut match_len);
+
+                    if ignore(match_len, rl ) {
+                        continue;
                     }
                     // When we encounter a mismatch, we construct the mutation string
                     //println!("I am getting the nucleotide at position {}: {}", self.genome_offsets[*chr_id] + current_pos, char::from(self.genome[self.genome_offsets[*chr_id] + current_pos]));
-                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos -1];// Get the reference base at current position
+                    let ref_base = self.genome[self.genome_offsets[*chr_id] + current_pos -1 ];// Get the reference base at current position
                     let alt_base = c;
 
                     let addon = match find_area_for_pos( current_pos, &guhs){
@@ -232,11 +292,19 @@ impl MutationProcessor {
                         ref_base as char
                     ));
 
+                    add_to_hist( match_len, rl, mapping_info );
+
                     // Update the current position
                     current_pos += 1;
                 }
                 // Handle deletions, where ^ indicates deleted bases in the reference
                 '^' => {
+                    advance_if_needed(&mut current_pos, &mut match_len);
+
+                    if ignore(match_len, rl ) {
+                        continue;
+                    }
+ 
                     i += 1; // Skip the '^'
                     let mut deleted_bases = String::new();
                     while i < md_tag.len() && md_tag.chars().nth(i).unwrap().is_alphabetic() {
@@ -280,7 +348,7 @@ mod tests {
         assert!(Path::new(fasta_path).exists(), "FASTA test file not found.");
         assert!(Path::new(bam_path).exists(), "BAM test file not found.");
 
-        match MutationProcessor::new(bam_path, fasta_path) {
+        match MutationProcessor::new(bam_path, fasta_path, 0.0) {
             Ok(processor) => {
                 assert!(!processor.genome.is_empty(), "Genome should not be empty.");
                 assert!(
@@ -312,7 +380,7 @@ ACTGACTGACTGACTGACTGACTGACTGACTG
 
 
         */
-        let bam_path = "testData/mutation_test.bam"; // Not used, can be dummy
+        let bam_path = "testData/mutation_test.bam"; 
         /*
 @HD VN:1.6  SO:coordinate
 @SQ SN:chr1 LN:32
@@ -320,11 +388,11 @@ ACTGACTGACTGACTGACTGACTGACTGACTG
 @PG ID:samtools.1   PN:samtools PP:samtools VN:1.19.2   CL:samtools view -h mutation_test.bam
 @PG ID:samtools.2   PN:samtools PP:samtools.1   VN:1.19.2   CL:samtools view -h mutation_test.sam
 @PG ID:samtools.3   PN:samtools PP:samtools.2   VN:1.19.2   CL:samtools view -h mutation_test.bam
-read1:AGCTGCTGAGATCGATACAGTAATTGGTCA    0   chr1    1   60  10M *   0   0   ACTGACTTAC  *   MD:Z:6T3
-read2:AGCTGCTGAGATCGATACAGTTTTTGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC  *   MD:Z:2T7
-read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC  *   MD:Z:4C5
+read1:AGCTGCTGAGATCGATACAGTAATTGGTCA    0   chr1    1   60  10M *   0   0   ACTGACTTAC* MD:Z:6C3
+read2:AGCTGCTGAGATCGATACAGTTTTTGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC* MD:Z:3T7
+read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTGACTTAC* MD:Z:4C5
         */
-        let processor = MutationProcessor::new(bam_path, fasta_path)
+        let processor = MutationProcessor::new(bam_path, fasta_path, 0.0)
             .expect("Failed to load MutationProcessor");
 
         let mut reader = match Reader::from_path(bam_path) {
@@ -351,7 +419,7 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
                 Ok((_id, read)) => {
                     // Process the read if successful
                     processor.handle_mutations(&read, "unknown", &mut idx, &mut gex, 
-                        &mut mapping_info, &cell_id, None);
+                        &mut mapping_info, &cell_id,30, None);
                 },
                 Err(e) => {
                     // Handle the error, log it, and continue processing
@@ -362,12 +430,18 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
             
         }
 
-        assert_eq!( idx.get_all_gene_names().len(), 2, "detected only one mutation {:?}", idx.get_all_gene_names() );
-        //MD:Z:6T3
-        assert_eq!( idx.get_all_gene_names()[0], "unknown/unknown/chr1:g.6T>G" );
-        //assert_eq!( idx.get_all_gene_names()[1], "unknown/chr1/chr1:g.7G>T" );
-        //MD:Z:2T7
-        assert_eq!( idx.get_all_gene_names()[1], "unknown/unknown/chr1:g.2A>T" );
+        assert_eq!( idx.get_all_gene_names().len(), 3, "detected only one mutation {:?}", idx.get_all_gene_names() );
+        //MD:Z:6T3 
+        //   000000000011111111112222222222
+        //   012345678901234567890123456789
+        //r: AGCTGCTGAGATCGATACAGTAATTGGTCA
+        //g: AGCTGAGCAGATCGATACAGTAATTGGTCA
+
+        assert_eq!( idx.get_all_gene_names()[0], "unknown/unknown/chr1:g.6A>C" );
+        //start 4 MD:Z:3T7
+        assert_eq!( idx.get_all_gene_names()[1], "unknown/unknown/chr1:g.6A>T" );
+        // read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA 0   chr1    4   60  10M *   0   0   ACTGACTTAC* MD:Z:4C5
+        assert_eq!( idx.get_all_gene_names()[2], "unknown/unknown/chr1:g.7G>C" );
 
         // check if the cell names make sense
         let file_path = PathBuf::from("test_output/mutations");

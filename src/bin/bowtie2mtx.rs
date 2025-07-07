@@ -15,6 +15,7 @@ use bam_tide::gtf_logics::{process_data_bowtie2, PROGRAM_NAME, AnalysisType, Mat
 use std::path::PathBuf;
 use std::fs;
 use std::fs::File;
+use std::io::Write;
 
 //use std::thread;
 //use rayon::prelude::*;
@@ -66,6 +67,15 @@ struct Opts {
     #[clap( long, value_enum, default_value = "exact")]
     match_type: MatchType,
 
+    /// Ignore mutations in the first and last mut_clip[%] area of the read
+    #[clap( long, default_value_t = 0.0)]
+    mut_clip: f32,
+
+    /// Collect only from these chromosomes
+    #[clap(long, value_parser, num_args = 1.., )]
+    chomosomes: Option<Vec<String>>,
+
+
     /*
     /// Group gtf info into genes or e.g. singel cell quantifications (genes) or use each exon on it's own for e.g. TE analyses (exon)
     #[clap( long, value_enum, default_value = "genes")]
@@ -99,13 +109,13 @@ fn main() {
     // Parse BAM and GTF
     println!("creating Bed coverage info");
     
-    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads, Some(vec!["chrM", "M", "chrMT", "MT" ]) );
+    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads, opts.chomosomes );
 
-    println!("Created {} bed areas", bed.coverage_data.len() );
+    println!("Created {} bed areas:_\n{bed}", bed.coverage_data.len() );
 
-    let mutations: Option<MutationProcessor> = match opts.fasta {
+    let mut mutations: Option<MutationProcessor> = match opts.fasta {
         Some(fasta_path) => {
-            match MutationProcessor::new(&opts.bam, &fasta_path) {
+            match MutationProcessor::new(&opts.bam, &fasta_path, opts.mut_clip) {
                 Ok(processor) => Some(processor),
                 Err(e) => {
                     eprintln!("Failed to initialize MutationProcessor: {}", e);
@@ -133,6 +143,9 @@ fn main() {
     };
 
     // Final reporting and cleanup
+    if let Some(mproc) = mutations.as_mut() {
+        mproc.hist = mapping_info.hist.clone();
+    }
 
     let file_path_sp = PathBuf::from(&opts.outpath).join( &*PROGRAM_NAME );
     println!("Writing data to path {:?}", file_path_sp);
@@ -173,5 +186,16 @@ fn main() {
         Err(e) => {println!("Error: {e:?}");}
     }
 
+    match mutations {
+        Some( mutation ) => {
+            println!("{}", mutation );
+            let path = PathBuf::from(&opts.outpath).join("mutations_report.txt");
+            let mut file = File::create(path).expect("Could not create the mutations report file");
+            writeln!(file, "{}", mutation).expect("Could not write the mutations report");
+        },
+        None => {
+            println!("Mutaion analysis needs a matching fasta formated reference genome");
+        }
+    }
     mapping_info.report_to_string();
 }

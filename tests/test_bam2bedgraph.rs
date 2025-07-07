@@ -52,6 +52,6 @@ fn test_bam2bedgraph() {
     // Check if the command was successful (exit code 0)
     assert!(output.status.success());
     // Convert output to string
-    let output_str = String::from_utf8_lossy(&output.stdout);
+    let _output_str = String::from_utf8_lossy(&output.stdout);
 
 }

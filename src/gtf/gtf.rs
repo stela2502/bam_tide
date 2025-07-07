@@ -205,12 +205,12 @@ impl FeatureMatcher for GTF{
             if exp_gex.try_insert(&cell_id, guh, mapping_info) {
                 // Handle mutations if any
                 if let Some(processor) = mutations {
-                    processor.handle_mutations( primary_read, gene_id, mut_idx, mut_gex, mapping_info, &cell_id, None);
+                    processor.handle_mutations( primary_read, gene_id, mut_idx, mut_gex, mapping_info, &cell_id, primary_read.sequence.len(), None);
                 }
                 // If the read is paired, process the mate as well
                 if let Some(mate) = mate_read {
                     if let Some(processor) = mutations {
-                        processor.handle_mutations(mate, gene_id, mut_idx, mut_gex, mapping_info, &cell_id, None);
+                        processor.handle_mutations(mate, gene_id, mut_idx, mut_gex, mapping_info, &cell_id, mate.sequence.len(), None);
                     }
                 }
 

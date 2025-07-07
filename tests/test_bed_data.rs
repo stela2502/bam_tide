@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
 
-    use bam_tide::bed_data::{BedData, Value}; // Adjust the path if needed
+    use bam_tide::bed_data::{BedData}; // Adjust the path if needed
     use bam_tide::data_iter::DataIter;
 
 

@@ -146,7 +146,7 @@ pub fn create_ref_id_to_name_hashmap(header_view: &Header ) -> HashMap<i32, Stri
 }
 
 // Function to process data
-pub fn process_data<T: FeatureMatcher>(
+pub fn process_data<T: FeatureMatcher + std::fmt::Debug>(
     bam_file: &str,
     mapping_info: &mut MappingInfo,
     gtf: &T,
@@ -237,9 +237,6 @@ pub fn process_data<T: FeatureMatcher>(
                     buffer.push((read_data, None));
                 }
             }
-            Err("missing_Chromosome") => {
-                //eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
-            }
             Err(err) => {
                 mapping_info.report(err);
             }
@@ -289,7 +286,7 @@ pub fn process_data<T: FeatureMatcher>(
 
 
 // Function to process data
-pub fn process_data_bowtie2<T: FeatureMatcher>(
+pub fn process_data_bowtie2<T: FeatureMatcher + std::fmt::Debug>(
     bam_file: &str,
     mapping_info: &mut MappingInfo,
     gtf: &T,
@@ -354,37 +351,37 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
         
    
         match data_tuple {
-            Ok(res) => {
-                let qname = &res.0; // Cell ID or read name as key
-                let read_data = res.1.clone(); // Clone to avoid ownership issues
-
+            Ok( (qname, read_data) ) => {
+                #[cfg(debug_assertions)]
+                println!("I obtained read {} with data {}",qname, read_data);
                 if read_data.is("paired") {
-                    match singlets.remove(qname) {
+                    match singlets.remove(&qname) {
                         Some(first_read) => {
                             // Mate found! Process the pair
-                            //println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
+                            #[cfg(debug_assertions)]
+                            println!("Found paired reads: {:?} <-> {:?}", first_read, read_data);
                             buffer.push((first_read, Some(read_data)));
                         }
                         None => {
                             // Handle orphaned reads (mate unmapped)
                             if read_data.is("mate_unmapped") {
-                                //println!("Orphaned read (mate unmapped): {:?}", read_data);
+                                #[cfg(debug_assertions)]
+                                println!("Orphaned read (mate unmapped): {:?}", read_data);
                                 buffer.push((read_data, None)); // Process it as a single read
                             } else {
                                 // No mate found, store this read for future pairing
                                 singlets.insert(qname.to_string(), read_data.clone());
-                                //println!("Storing read for future pairing: {:?}", read_data);
+                                #[cfg(debug_assertions)]
+                                println!("Storing read for future pairing: {:?}", read_data);
                             }
                         }
                     }
                 } else {
                     // Unpaired read (not part of a pair at all)
-                    //println!("Unpaired read: {:?}", read_data);
+                    #[cfg(debug_assertions)]
+                    println!("Unpaired read: {:?}", read_data);
                     buffer.push((read_data, None));
                 }
-            }
-            Err("missing_Chromosome") => {
-                //eprintln!("Missing chromosome for BAM entry - assuming end of usable data.\n{:?}", record);
             }
             Err(err) => {
                 mapping_info.report(err);
@@ -438,7 +435,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher>(
 
 
 // Function to process a buffer
-fn process_buffer<T: FeatureMatcher + Sync>(
+fn process_buffer<T: FeatureMatcher + Sync + std::fmt::Debug>(
     buffer: &[(ReadData, Option<ReadData>)],
     num_threads: usize,
     expr_gex: &mut SingleCellData,
@@ -449,7 +446,6 @@ fn process_buffer<T: FeatureMatcher + Sync>(
     gtf: &T,
     mutations: &Option<MutationProcessor>,
     match_type: &MatchType,
-
 ) {
     // everything outside this function is file io
     mapping_info.stop_file_io_time();
@@ -483,7 +479,15 @@ fn process_buffer<T: FeatureMatcher + Sync>(
 }
 
 // Function to process a chunk
-fn process_chunk<T: FeatureMatcher>(chunk: &[(ReadData, Option<ReadData>)], gtf: &T, mutations: &Option<MutationProcessor>, match_type: &MatchType,) -> (( SingleCellData, IndexedGenes),  (SingleCellData,IndexedGenes), MappingInfo ) {
+fn process_chunk<T: FeatureMatcher + std::fmt::Debug>(
+    chunk: &[(ReadData, Option<ReadData>)], 
+    gtf: &T, 
+    mutations: &Option<MutationProcessor>, 
+    match_type: &MatchType, ) -> (
+        ( SingleCellData, IndexedGenes),  
+        ( SingleCellData, IndexedGenes), 
+        MappingInfo 
+    ) {
     let mut local_iterator = ExonIterator::new("part");
     // for the expression data
     let mut expr_gex = SingleCellData::new(1);
@@ -501,9 +505,10 @@ fn process_chunk<T: FeatureMatcher>(chunk: &[(ReadData, Option<ReadData>)], gtf:
             match gtf.init_search( &data.0.chromosome, (data.0.start).try_into().unwrap(), &mut local_iterator){
                 Ok(_) => {},
                 Err(e) => {
+                    //panic!("Does the GTF match to the bam file?! {}\n{gtf} ({e:?})",data.0.chromosome, );
                     local_report.report( &format!("{:?}", e) );
                     continue;
-                    //panic!("Does the GTF match to the bam file?! ({:?})",e)
+                    //
                 },
             };
             last_chr = &data.0.chromosome ;
@@ -519,6 +524,7 @@ fn process_chunk<T: FeatureMatcher>(chunk: &[(ReadData, Option<ReadData>)], gtf:
             &mut mut_idx,
             &mut local_report,
             match_type,
+
         );
     }
     ( (expr_gex, expr_idx), (mut_gex, mut_idx), local_report )
