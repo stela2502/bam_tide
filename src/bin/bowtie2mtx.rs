@@ -73,7 +73,7 @@ struct Opts {
 
     /// Collect only from these chromosomes
     #[clap(long, value_parser, num_args = 1.., )]
-    chomosomes: Option<Vec<String>>,
+    chromosomes: Option<Vec<String>>,
 
 
     /*
@@ -109,7 +109,7 @@ fn main() {
     // Parse BAM and GTF
     println!("creating Bed coverage info");
     
-    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads, opts.chomosomes );
+    let bed = BedData::init( &opts.bam, opts.bin_width, num_threads, opts.chromosomes );
 
     println!("Created {} bed areas:_\n{bed}", bed.coverage_data.len() );
 
