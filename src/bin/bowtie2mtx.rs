@@ -2,7 +2,7 @@
 //use rustody::cellids::CellIds;
 //use rustody::cellids10x::CellIds10x;
 //use rustody::traits::CellIndex;
-use rustody::mapping_info::MappingInfo;
+use mapping_info::MappingInfo;
 
 use bam_tide::bed_data::BedData;
 use bam_tide::mutation_processor::MutationProcessor;

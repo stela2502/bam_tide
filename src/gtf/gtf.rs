@@ -19,10 +19,10 @@ use crate::mutation_processor::MutationProcessor;
 use crate::gtf_logics::MatchType;
 use crate::feature_matcher::FeatureMatcher;
 
-use rustody::mapping_info::MappingInfo;
-use rustody::singlecelldata::SingleCellData;
-use rustody::singlecelldata::IndexedGenes;
-use rustody::singlecelldata::cell_data::GeneUmiHash;
+use mapping_info::MappingInfo;
+use scdata::SingleCellData;
+use scdata::IndexedGenes;
+use scdata::cell_data::GeneUmiHash;
 
 
 #[derive(Debug)]

@@ -24,8 +24,8 @@ use crate::read_data::ReadData;
 use crate::bed_data::ChrArea;
 
 use rustody::genes_mapper::cigar::Cigar;
-use rustody::mapping_info::MappingInfo;
-use rustody::singlecelldata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHash};
+use mapping_info::MappingInfo;
+use scdata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHash};
 
 
 
