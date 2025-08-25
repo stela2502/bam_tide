@@ -12,8 +12,8 @@ use crate::feature_matcher::FeatureMatcher;
 use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
 
-use rustody::singlecelldata::{SingleCellData, IndexedGenes };
-use rustody::mapping_info::MappingInfo;
+use scdata::{Scdata, IndexedGenes };
+use mapping_info::MappingInfo;
 //use rustody::int_to_str::IntToStr;
 //use rustody::analysis::bam_flag::BamFlag;
 //use rustody::genes_mapper::cigar::CigarEnum;

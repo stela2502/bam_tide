@@ -4,10 +4,10 @@ use crate::mutation_processor::MutationProcessor;
 use crate::gtf_logics::MatchType;
 
 
-use rustody::singlecelldata::SingleCellData;
-use rustody::singlecelldata::IndexedGenes;
-use rustody::mapping_info::MappingInfo;
-use rustody::int_to_str::IntToStr;
+use scdata::Scdata;
+use scdata::IndexedGenes;
+use mapping_info::MappingInfo;
+use int_to_str::IntToStr;
 
 
 #[derive(Debug, PartialEq )]

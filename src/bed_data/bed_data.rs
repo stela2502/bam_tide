@@ -23,9 +23,9 @@ use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
 use crate::bed_data::ChrArea;
 
-use rustody::genes_mapper::cigar::Cigar;
+//use rustody::genes_mapper::cigar::Cigar;
 use mapping_info::MappingInfo;
-use scdata::{SingleCellData, IndexedGenes, cell_data::GeneUmiHash};
+use scdata::{Scdata, IndexedGenes, cell_data::GeneUmiHash};
 
 
 
@@ -130,7 +130,7 @@ impl FeatureMatcher for BedData{
 		data: &(ReadData, Option<ReadData>),
 		mutations: &Option<MutationProcessor>,
 		_iterator: &mut ExonIterator,
-		exp_gex: &mut SingleCellData,
+		exp_gex: &mut Scdata,
 		exp_idx: &mut IndexedGenes,
 		mut_gex: &mut SingleCellData,
 		mut_idx: &mut IndexedGenes,

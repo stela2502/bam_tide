@@ -1,5 +1,5 @@
 //use regex::Regex;
-//use rustody::mapping_info::MappingInfo;
+//use mapping_info::MappingInfo;
 //use rustody::genes_mapper::cigar::{Cigar, CigarEnum};
 
 use flate2::read::MultiGzDecoder;
@@ -12,10 +12,11 @@ use rust_htslib::bam::{ Read, Reader, Header };
 use crate::read_data::ReadData;
 use crate::bed_data::ChrArea;
 
-use rustody::singlecelldata::IndexedGenes;
-use rustody::singlecelldata::SingleCellData;
-use rustody::mapping_info::MappingInfo;
-use rustody::singlecelldata::cell_data::GeneUmiHash;
+
+use scdata::IndexedGenes;
+use scdata::Scdata;
+use mapping_info::MappingInfo;
+use scdata::cell_data::GeneUmiHash;
 
 use std::collections::HashSet;
 use std::collections::HashMap;

@@ -1,8 +1,7 @@
-use rustody::analysis::bam_flag::BamFlag;
 use rust_htslib::bam::record::{Record};
 use rust_htslib::errors::Result;
 use std::collections::HashMap;
-use rustody::int_to_str::IntToStr;
+use int_to_str::IntToStr;
 
 use core::fmt;
 

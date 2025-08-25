@@ -20,7 +20,7 @@ use crate::gtf_logics::MatchType;
 use crate::feature_matcher::FeatureMatcher;
 
 use mapping_info::MappingInfo;
-use scdata::SingleCellData;
+use scdata::Scdata;
 use scdata::IndexedGenes;
 use scdata::cell_data::GeneUmiHash;
 

@@ -2,6 +2,7 @@
 pub mod atac_to_rna_mapper;
 pub mod bed_data;
 pub mod data_iter;
+pub mod bam_flag;
 
 pub mod gtf;
 pub mod gtf_logics;
