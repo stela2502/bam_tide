@@ -7,7 +7,7 @@ use crate::gtf_logics::MatchType;
 use scdata::Scdata;
 use scdata::IndexedGenes;
 use mapping_info::MappingInfo;
-use int_to_str::IntToStr;
+use int_to_str::int_to_str::IntToStr;
 
 
 #[derive(Debug, PartialEq )]
@@ -32,9 +32,9 @@ pub trait FeatureMatcher: Sync + Send  + std::fmt::Display {
         data: &(ReadData, Option<ReadData>),
         mutations: &Option<MutationProcessor>,
         iterator: &mut ExonIterator,
-        exp_gex: &mut SingleCellData,
+        exp_gex: &mut Scdata,
         exp_idx: &mut IndexedGenes,
-        mut_gex: &mut SingleCellData,
+        mut_gex: &mut Scdata,
         mut_idx: &mut IndexedGenes,
         mapping_info: &mut MappingInfo,
         match_type: &MatchType,
@@ -52,12 +52,9 @@ pub trait FeatureMatcher: Sync + Send  + std::fmt::Display {
     fn parse_cell_id(cell_id_str: &str) -> Result<u64, String> {
         cell_id_str.parse::<u64>().or_else(|_| {
 
-            let ret = match IntToStr::new(cell_id_str.as_bytes().to_vec(), 32){
-                Ok(obj) => Ok(obj.into_u64()),
-                Err(e) => Err( format!("cell_name could not be parsed to u64: {e}") )
-            };
+            let ret = IntToStr::new(cell_id_str).into_u64();
             //println!("I am trying to encode the cell ID {} as 2bit u64 {:?}", cell_id_str, ret);
-            ret
+            Ok(ret)
         })
     }
 
@@ -66,9 +63,9 @@ pub trait FeatureMatcher: Sync + Send  + std::fmt::Display {
         data: &(ReadData, Option<ReadData>),
         mutations: &Option<MutationProcessor>,
         iterator: &mut ExonIterator,
-        exp_gex: &mut SingleCellData,
+        exp_gex: &mut Scdata,
         exp_idx: &mut IndexedGenes,
-        mut_gex: &mut SingleCellData,
+        mut_gex: &mut Scdata,
         mut_idx: &mut IndexedGenes,
         mapping_info: &mut MappingInfo,
         match_type: &MatchType,

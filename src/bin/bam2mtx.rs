@@ -100,7 +100,7 @@ fn main() {
 
     let num_threads = opts.num_proc.unwrap_or_else(rayon::current_num_threads);
 
-    let mut mapping_info = MappingInfo::new(Some(log_file), 3.0, 0, None);
+    let mut mapping_info = MappingInfo::new(Some(log_file), 3.0, 0);
     mapping_info.start_counter();
 
     // Parse BAM and GTF

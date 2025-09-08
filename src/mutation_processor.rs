@@ -14,7 +14,10 @@ use crate::bed_data::ChrArea;
 
 
 use scdata::IndexedGenes;
+
+use scdata::scdata::MatrixValueType;
 use scdata::Scdata;
+#[allow(unused_variables)]
 use mapping_info::MappingInfo;
 use scdata::cell_data::GeneUmiHash;
 
@@ -137,7 +140,7 @@ impl MutationProcessor {
                     // Check previous chr finished
                     if write_pos != expected_len {
                         return Err(format!(
-                            "Chromosome sequence too short: expected {expected_len}, got {write_pos}"
+                            "Chromosome {chr_id} - sequence too short: expected {expected_len}, got {write_pos}"
                         ));
                     }
                 }
@@ -200,7 +203,7 @@ impl MutationProcessor {
         data: &ReadData,
         gene_id: &str,
         mut_idx: &mut IndexedGenes,
-        mut_gex: &mut SingleCellData,
+        mut_gex: &mut Scdata,
         mapping_info: &mut MappingInfo,
         cell_id: &u64,
         read_len:usize,
@@ -221,7 +224,7 @@ impl MutationProcessor {
             //println!("I have added the mutation {snip} as id {mut_id}");
             let ghum = GeneUmiHash(mut_id, data.umi);
 
-            let _ = mut_gex.try_insert(cell_id, ghum, mapping_info);
+            let _ = mut_gex.try_insert(cell_id, ghum, 1_f32, mapping_info);
         }
 
     }
@@ -401,8 +404,8 @@ read3:AGCTGCTGAGATCGATACAGTTAAAGGTCA    0   chr1    4   60  10M *   0   0   ACTG
             Err(e) => panic!("Error opening BAM file: {}", e),
         };
 
-        let mut mapping_info = MappingInfo::new(None, 3.0, 0, None);
-        let mut gex = SingleCellData::new(1);
+        let mut mapping_info = MappingInfo::new(None, 3.0, 0 );
+        let mut gex = Scdata::new(1, MatrixValueType::Integer);
         let mut idx = IndexedGenes::empty(Some(0));
         let cell_id = 1_u64;
 

@@ -1,10 +1,10 @@
 use rust_htslib::bam::record::{Record};
 use rust_htslib::errors::Result;
 use std::collections::HashMap;
-use int_to_str::IntToStr;
+use int_to_str::int_to_str::IntToStr;
+use crate::bam_flag::BamFlag;
 
 use core::fmt;
-
 
 /// This class converts the start from bam (0 based) to Gtf (1 based)
 #[derive(Debug, Clone)]
@@ -136,7 +136,7 @@ impl ReadData {
         };
 
         // Try to extract the UMI (UB), and report if missing
-        //let umi_u64 = IntToStr::new(umi.into(), 32).unwrap().into_u64();
+        //let umi_u64 = IntToStr::new(umi).into_u64();
 
         // Extract the start position (1-based for your GTF comparison)
         let start = bam_feature.pos(); // This is 0-based, needs adjustment for GTF
@@ -197,7 +197,7 @@ impl ReadData {
                 Some(u) => u,
                 None => return Err("missing_UMI"),
             };
-            IntToStr::new(umi.into(), 32).unwrap().into_u64()
+            IntToStr::new(umi).into_u64()
         };
 
         // Extract the start position (1-based for your GTF comparison)

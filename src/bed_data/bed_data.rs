@@ -23,7 +23,7 @@ use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
 use crate::bed_data::ChrArea;
 
-//use rustody::genes_mapper::cigar::Cigar;
+use cigar::Cigar;
 use mapping_info::MappingInfo;
 use scdata::{Scdata, IndexedGenes, cell_data::GeneUmiHash};
 
@@ -132,7 +132,7 @@ impl FeatureMatcher for BedData{
 		_iterator: &mut ExonIterator,
 		exp_gex: &mut Scdata,
 		exp_idx: &mut IndexedGenes,
-		mut_gex: &mut SingleCellData,
+		mut_gex: &mut Scdata,
 		mut_idx: &mut IndexedGenes,
 		mapping_info: &mut MappingInfo,
 		_match_type: &MatchType,
@@ -161,7 +161,7 @@ impl FeatureMatcher for BedData{
         self.collect_ghus( &primary_read, &mut guhs, exp_idx);
         for guh in guhs.iter(){
         	//println!("Inserting GHU {}",guh);
-        	exp_gex.try_insert( &cell_id, *guh, mapping_info );
+        	exp_gex.try_insert( &cell_id, *guh, 1_f32, mapping_info );
         }
         if let Some(processor) = mutations {
              processor.handle_mutations( primary_read, "unknown", mut_idx, mut_gex, mapping_info, &cell_id, primary_read.sequence.len(), self.collect_gene_areas(primary_read) );

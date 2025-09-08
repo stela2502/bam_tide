@@ -13,6 +13,8 @@ use crate::mutation_processor::MutationProcessor;
 use crate::read_data::ReadData;
 
 use scdata::{Scdata, IndexedGenes };
+use scdata::scdata::MatrixValueType;
+
 use mapping_info::MappingInfo;
 //use rustody::int_to_str::IntToStr;
 //use rustody::analysis::bam_flag::BamFlag;
@@ -156,7 +158,7 @@ pub fn process_data<T: FeatureMatcher + std::fmt::Debug>(
     mutations: &Option<MutationProcessor>,
     analysis_type: &AnalysisType,
     match_type: &MatchType,
-    ) -> Result<( (SingleCellData, IndexedGenes),(SingleCellData, IndexedGenes) ), String> {
+    ) -> Result<( (Scdata, IndexedGenes),(Scdata, IndexedGenes) ), String> {
 
     // Open BAM file with rust_htslib
     //let mut reader = Reader::from_path( bam_file  ).unwrap();
@@ -179,10 +181,10 @@ pub fn process_data<T: FeatureMatcher + std::fmt::Debug>(
     println!("Using {} processors and processing {} reads per batch", num_threads, split);
 
     let mut buffer = Vec::<(ReadData, Option<ReadData>)>::with_capacity(split);
-    let mut expr_gex = SingleCellData::new(1);
+    let mut expr_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut expr_idx = IndexedGenes::empty(Some(0));
 
-    let mut mut_gex = SingleCellData::new(1);
+    let mut mut_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut mut_idx = IndexedGenes::empty(Some(0));
 
     let mut singlets = HashMap::<String, ReadData>::new();
@@ -294,7 +296,7 @@ pub fn process_data_bowtie2<T: FeatureMatcher + std::fmt::Debug>(
     mutations: &Option<MutationProcessor>,
     analysis_type: &AnalysisType,
     match_type: &MatchType,
-    ) -> Result<( (SingleCellData, IndexedGenes),(SingleCellData, IndexedGenes) ), String> {
+    ) -> Result<( (Scdata, IndexedGenes),(Scdata, IndexedGenes) ), String> {
 
     // Open BAM file with rust_htslib
     //let mut reader = Reader::from_path( bam_file  ).unwrap();
@@ -317,10 +319,10 @@ pub fn process_data_bowtie2<T: FeatureMatcher + std::fmt::Debug>(
     println!("Using {} processors and processing {} reads per batch", num_threads, split);
 
     let mut buffer = Vec::<(ReadData, Option<ReadData>)>::with_capacity(split);
-    let mut expr_gex = SingleCellData::new(1);
+    let mut expr_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut expr_idx = IndexedGenes::empty(Some(0));
 
-    let mut mut_gex = SingleCellData::new(1);
+    let mut mut_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut mut_idx = IndexedGenes::empty(Some(0));
 
     let mut singlets = HashMap::<String, ReadData>::new();
@@ -438,9 +440,9 @@ pub fn process_data_bowtie2<T: FeatureMatcher + std::fmt::Debug>(
 fn process_buffer<T: FeatureMatcher + Sync + std::fmt::Debug>(
     buffer: &[(ReadData, Option<ReadData>)],
     num_threads: usize,
-    expr_gex: &mut SingleCellData,
+    expr_gex: &mut Scdata,
     expt_idx: &mut IndexedGenes,
-    mut_gex: &mut SingleCellData,
+    mut_gex: &mut Scdata,
     mut_idx: &mut IndexedGenes,
     mapping_info: &mut MappingInfo,
     gtf: &T,
@@ -484,19 +486,19 @@ fn process_chunk<T: FeatureMatcher + std::fmt::Debug>(
     gtf: &T, 
     mutations: &Option<MutationProcessor>, 
     match_type: &MatchType, ) -> (
-        ( SingleCellData, IndexedGenes),  
-        ( SingleCellData, IndexedGenes), 
+        ( Scdata, IndexedGenes),  
+        ( Scdata, IndexedGenes), 
         MappingInfo 
     ) {
     let mut local_iterator = ExonIterator::new("part");
     // for the expression data
-    let mut expr_gex = SingleCellData::new(1);
+    let mut expr_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut expr_idx = IndexedGenes::empty(Some(0)) ;
     // for the mutation counts
-    let mut mut_gex = SingleCellData::new(1);
+    let mut mut_gex = Scdata::new(1, MatrixValueType::Integer);
     let mut mut_idx = IndexedGenes::empty(Some(0)) ;
 
-    let mut local_report = MappingInfo::new(None, 3.0, 0, None);
+    let mut local_report = MappingInfo::new(None, 3.0, 0 );
     let mut last_chr = "unset";
     //     0        1    2      3      4    5                  6    7 
     //for (data.0, umi, start, cigar, chr, is_reverse_strand, seq, qual ) in chunk {

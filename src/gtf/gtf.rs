@@ -114,9 +114,9 @@ impl FeatureMatcher for GTF{
         data: &(ReadData, Option<ReadData>),
         mutations: &Option<MutationProcessor>,
         iterator: &mut ExonIterator,
-        exp_gex: &mut SingleCellData,
+        exp_gex: &mut Scdata,
         exp_idx: &mut IndexedGenes,
-        mut_gex: &mut SingleCellData,
+        mut_gex: &mut Scdata,
         mut_idx: &mut IndexedGenes,
         mapping_info: &mut MappingInfo,
         match_type: &MatchType,
@@ -202,7 +202,7 @@ impl FeatureMatcher for GTF{
             #[cfg(debug_assertions)]
             println!("\t And I got a gene: {guh}");
 
-            if exp_gex.try_insert(&cell_id, guh, mapping_info) {
+            if exp_gex.try_insert(&cell_id, guh, 1_f32,  mapping_info) {
                 // Handle mutations if any
                 if let Some(processor) = mutations {
                     processor.handle_mutations( primary_read, gene_id, mut_idx, mut_gex, mapping_info, &cell_id, primary_read.sequence.len(), None);

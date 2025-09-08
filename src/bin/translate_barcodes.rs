@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use bam_tide::ATACtoRNAMapper; // adjust based on your project structure
 
-use rustody::int_to_str::IntToStr;
+use int_to_str::int_to_str::IntToStr;
 
 #[derive(Parser)]
 #[command(name = "translate_barcodes")]
@@ -48,14 +48,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let encoder = GzEncoder::new(output, Compression::default());
     let mut writer = BufWriter::new(encoder);
 
-    let mut i2s = IntToStr::new(b"AAA".to_vec(), 32).unwrap();
-
     for line in reader.lines() {
         let barcode = line?;
-        let atac_id = barcode_to_u32(&barcode, &mut i2s); 
+        let atac_id = barcode_to_u32(&barcode); 
 
         if let Some(rna_id) = mapper.translate(atac_id) {
-            let rna_barcode = u32_to_barcode(rna_id, &mut i2s);
+            let rna_barcode = u32_to_barcode(rna_id);
             writeln!(writer, "{}", rna_barcode)?;
         } else {
             eprintln!("Warning: no mapping found for barcode '{}'", barcode);
@@ -67,12 +65,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // These are placeholder signatures; you will implement the actual logic
-fn barcode_to_u32(barcode: &str, i2s: &mut IntToStr) -> u32 {
+fn barcode_to_u32(barcode: &str) -> u32 {
     // Your encoding logic
-    i2s.str_to_u32( barcode )
+    IntToStr::new( barcode ).into_u32()
 }
 
-fn u32_to_barcode(encoded: u32, i2s: &mut IntToStr) -> String {
+fn u32_to_barcode(encoded: u32) -> String {
     // Your decoding logic
-    i2s.u64_to_string(16, &(encoded.into()) )
+    let mut ret = IntToStr::u8_array_to_str( &encoded.to_le_bytes() );
+    ret.truncate( 16 );
+    ret
 }
