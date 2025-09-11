@@ -14,7 +14,7 @@ struct Args {
     input: String,
 
     /// Output histogram of positions
-    #[arg(short, long)]
+    #[arg(short='H', long)]
     histogram: bool,
 
     /// Set bin count
