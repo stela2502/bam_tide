@@ -2,6 +2,7 @@
 use std::process::Command;
 use std::path::Path;
 use std::fs;
+#[allow(unused_imports)]
 use std::process::exit;
 
 #[test]

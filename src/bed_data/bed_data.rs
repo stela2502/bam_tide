@@ -629,3 +629,245 @@ impl BedData {
 
 
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    const EPS: f32 = 1e-6;
+
+    #[test]
+    fn test_value_flat() {
+        let v = Value { start: 10, end: 20, value: 3.14 };
+        let flat = v.flat();
+        assert_eq!(flat.0, 10);
+        assert_eq!(flat.1, 20);
+        assert!((flat.2 - 3.14).abs() < EPS);
+    }
+
+    #[test]
+    fn test_genome_info_to_search_and_id_for_chr_start() {
+        // build a fake genome_info
+        let genome_info = vec![
+            ("chr1".to_string(), 1000usize, 0usize),
+            ("chr2".to_string(), 2000usize, 100usize),
+        ];
+        let search = BedData::genome_info_to_search(&genome_info);
+        assert_eq!(search.get("chr1"), Some(&0usize));
+        assert_eq!(search.get("chr2"), Some(&1usize));
+        assert!(search.get("chr3").is_none());
+
+        // Construct a BedData-like instance minimal for id_for_chr_start
+        let bd = BedData {
+            genome_info,
+            search,
+            coverage_data: vec![0.0; 300],
+            bin_width: 100,
+            threads: 1,
+            nreads: 0,
+        };
+
+        // chr1 start 0 -> offset 0 + 0/bin_width = 0
+        assert_eq!(bd.id_for_chr_start("chr1", 0), Some(0usize));
+
+        // chr1 start 150 -> id = offset + 150/100 = 1
+        assert_eq!(bd.id_for_chr_start("chr1", 150), Some(1usize));
+
+        // chr2 start 350 -> offset 100 + 350/100 = 103
+        assert_eq!(bd.id_for_chr_start("chr2", 350), Some(100usize + 3usize));
+    }
+
+    #[test]
+    fn test_current_chr_for_id() {
+        // genome_info: (name, length, offset)
+        let genome_info = vec![
+            ("chr1".to_string(), 100usize, 0usize),   // bins: 100/bin_width
+            ("chr2".to_string(), 200usize, 10usize),  // offset 10
+        ];
+        let bd = BedData {
+            genome_info: genome_info.clone(),
+            search: BedData::genome_info_to_search(&genome_info),
+            coverage_data: vec![0.0; 1000],
+            bin_width: 10,
+            threads: 1,
+            nreads: 0,
+        };
+
+        // ID mapping: check an ID that should fall into chr1
+        // For chr1 offset 0 and bin_width 10: id 0..= (100/10 - 1) => 0..=9
+        assert_eq!(bd.current_chr_for_id(0), Some(("chr1".to_string(), 100usize, 0usize)));
+        assert_eq!(bd.current_chr_for_id(9), Some(("chr1".to_string(), 100usize, 0usize)));
+
+        // ID 10 should map to chr2 (offset 10)
+        assert_eq!(bd.current_chr_for_id(10), Some(("chr2".to_string(), 200usize, 10usize)));
+
+        // Out of range -> None
+        // pick a large id that does not map
+        assert_eq!(bd.current_chr_for_id(9999), None);
+    }
+
+    #[test]
+    fn test_normalize_not_and_cpm_and_bpm_and_rpkm() {
+        // We'll create separate BedData instances for each test, so they don't interfere.
+
+        // Base coverage vector: [1,2,7] sum = 10
+        let base_cov = vec![1.0_f32, 2.0, 7.0];
+
+        // 1) Normalize::Not -> unchanged
+        let mut bd_not = BedData {
+            genome_info: vec![("chr".to_string(), 30usize, 0usize)],
+            search: BedData::genome_info_to_search(&vec![("chr".to_string(), 30usize, 0usize)]),
+            coverage_data: base_cov.clone(),
+            bin_width: 1,
+            threads: 1,
+            nreads: 1_000_000, // arbitrary
+        };
+        bd_not.normalize(&Normalize::Not);
+        assert!((bd_not.coverage_data[0] - 1.0).abs() < EPS);
+        assert!((bd_not.coverage_data[1] - 2.0).abs() < EPS);
+        assert!((bd_not.coverage_data[2] - 7.0).abs() < EPS);
+
+        // 2) Normalize::Cpm -> divide by (nreads / 1_000_000.0)
+        // choose nreads = 1_000_000 so division factor becomes 1.0 -> unchanged
+        let mut bd_cpm = BedData {
+            genome_info: vec![("chr".to_string(), 30usize, 0usize)],
+            search: BedData::genome_info_to_search(&vec![("chr".to_string(), 30usize, 0usize)]),
+            coverage_data: base_cov.clone(),
+            bin_width: 1,
+            threads: 1,
+            nreads: 1_000_000,
+        };
+        bd_cpm.normalize(&Normalize::Cpm);
+        assert!((bd_cpm.coverage_data[0] - 1.0).abs() < EPS);
+        assert!((bd_cpm.coverage_data[1] - 2.0).abs() < EPS);
+        assert!((bd_cpm.coverage_data[2] - 7.0).abs() < EPS);
+
+        // 3) Normalize::Bpm -> divide by sum of all reads per bin (in "millions" theme in code but code sums raw)
+        // In implementation they compute `let div: f32 = self.coverage_data.par_iter().sum();`
+        // so we expect each element divided by 10 (sum)
+        let mut bd_bpm = BedData {
+            genome_info: vec![("chr".to_string(), 30usize, 0usize)],
+            search: BedData::genome_info_to_search(&vec![("chr".to_string(), 30usize, 0usize)]),
+            coverage_data: base_cov.clone(),
+            bin_width: 1,
+            threads: 1,
+            nreads: 1,
+        };
+        bd_bpm.normalize(&Normalize::Bpm);
+        assert!((bd_bpm.coverage_data[0] - 0.1).abs() < 1e-5);
+        assert!((bd_bpm.coverage_data[1] - 0.2).abs() < 1e-5);
+        assert!((bd_bpm.coverage_data[2] - 0.7).abs() < 1e-5);
+
+        // 4) Normalize::Rpkm -> uses: div = (nreads * bin_width) as f32 / 1_000_000.0 / 1_000.0
+        // Choose nreads = 1_000_000 and bin_width = 1 => div = (1_000_000 * 1)/1_000_000/1_000 = 1/1000 = 0.001
+        // so each value is divided by 0.001 => multiplied by 1000.
+        let mut bd_rpkm = BedData {
+            genome_info: vec![("chr".to_string(), 30usize, 0usize)],
+            search: BedData::genome_info_to_search(&vec![("chr".to_string(), 30usize, 0usize)]),
+            coverage_data: base_cov.clone(),
+            bin_width: 1,
+            threads: 1,
+            nreads: 1_000_000,
+        };
+        bd_rpkm.normalize(&Normalize::Rpkm);
+        assert!((bd_rpkm.coverage_data[0] - 1000.0).abs() < 1e-3);
+        assert!((bd_rpkm.coverage_data[1] - 2000.0).abs() < 1e-3);
+        assert!((bd_rpkm.coverage_data[2] - 7000.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_display() {
+        let genome_info = vec![
+            ("chrX".to_string(), 500usize, 0usize),
+            ("chrY".to_string(), 300usize, 50usize),
+        ];
+        let bd = BedData {
+            genome_info: genome_info.clone(),
+            search: BedData::genome_info_to_search(&genome_info),
+            coverage_data: vec![0.0; 10],
+            bin_width: 10,
+            threads: 2,
+            nreads: 42,
+        };
+        let s = format!("{}", bd);
+        // Basic checks that some expected substrings are present
+        assert!(s.contains("BedData Report"));
+        assert!(s.contains("Bin width: 10"));
+        assert!(s.contains("Processed reads: 42"));
+        assert!(s.contains("Chr: chrX"));
+        assert!(s.contains("Chr: chrY"));
+    }
+
+    use tempfile::NamedTempFile;
+    use std::path::Path;
+
+    #[test]
+    fn test_write_bigwig_creates_file() {
+        // Create a minimal BedData with some coverage data.
+        let genome_info = vec![("chr1".to_string(), 100usize, 0usize)];
+        let search = BedData::genome_info_to_search(&genome_info);
+		let coverage_data: Vec<f32> = (0..10).map(|i| i as f32).collect();
+
+        let bd = BedData {
+            genome_info: genome_info.clone(),
+            search,
+            coverage_data: coverage_data.clone(),
+            bin_width: 10,
+            threads: 1,
+            nreads: 2,
+        };
+
+
+
+        // Create a temporary file path (file is deleted on drop).
+        let tmp = NamedTempFile::new().expect("could not create temp file");
+        let tmp_path = tmp.path().to_path_buf();
+        // We need to drop the handle so BigWigWrite can create the file itself.
+        drop(tmp);
+
+        // Run the method under test.
+        bd.write_bigwig(tmp_path.to_str().unwrap())
+            .expect("write_bigwig failed");
+
+        // Check that the file now exists and is not empty.
+        let meta = std::fs::metadata(&tmp_path).expect("no file metadata");
+        assert!(meta.is_file(), "output is not a file");
+        assert!(meta.len() > 0, "bigwig file is empty");
+
+        // 4. Read it back
+        let file = File::open(&tmp_path).unwrap();
+        let mut bw = bigtools::BigWigRead::open(&file)
+            .expect("cannot open bigwig");
+
+        // Confirm chromosome info
+        let chroms = bw.chroms();
+        assert_eq!(chroms.len(), 1);
+        assert_eq!(chroms[0].name, "chr1");
+        assert_eq!(chroms[0].length, 100);
+
+        // Fetch all values from 0..100
+        let mut values: Vec<f32> = Vec::new();
+        for i in 0..10 {
+            let start = i * 10;
+            let end = start + 10;
+            let mut iter = bw.get_interval("chr1", start as u32, end as u32)
+                             .expect("interval lookup failed");
+            while let Some(Ok( v )) = iter.next() {
+                values.push(v.value);
+            }
+        }
+		let len = coverage_data.len();
+        // We expect each bin’s value to match the original coverage
+        assert_eq!(values.len(), len);
+        for (expected, found) in coverage_data.iter().zip(values.iter()) {
+            assert!(
+                (expected - found).abs() < 1e-6,
+                "value mismatch: expected {}, found {}",
+                expected,
+                found
+            );
+        }
+    }
+}
