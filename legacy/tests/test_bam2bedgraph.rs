@@ -15,14 +15,10 @@ fn test_bam2bedgraph() {
 
     if ! is_release_mode {
         eprintln!("Test should be re-run in release mode (speed!)");
-        exit(0);
+        return;
     }
 
-    let command = if is_release_mode {
-        "./target/release/bam2bedgraph"
-    } else {
-        "./target/debug/bam2bedgraph"
-    };
+    let command = env!("CARGO_BIN_EXE_bam2bedgraph");
 
     let args = &[
         "-b", "testData/test.bam",
