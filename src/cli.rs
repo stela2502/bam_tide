@@ -1,6 +1,7 @@
 //cli.rs
 // src/cli.rs
 use clap::{Parser, ValueEnum};
+use crate::bed_data::Normalize;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 pub enum AnalysisType {
@@ -9,14 +10,6 @@ pub enum AnalysisType {
     SingleCell,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum Normalize {
-    Not,
-    Rpkm,
-    Cpm,
-    Bpm,
-    Rpgc,
-}
 
 /// Shared CLI options for coverage exporters (bedGraph / bigWig)
 #[derive(Parser, Debug, Clone)]

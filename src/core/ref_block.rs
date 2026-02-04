@@ -85,14 +85,6 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
             | Cigar::Pad(_len) => {
                 // no-op for reference position
             }
-
-            // Some CIGAR implementations include Back (rare). If present, treat conservatively.
-            #[allow(unreachable_patterns)]
-            Cigar::Back(len) => {
-                // Move backwards on reference (rare/edge-case). Avoid underflow.
-                let l = len as u64;
-                ref_pos = ref_pos.saturating_sub(l);
-            }
         }
     }
 
@@ -109,7 +101,7 @@ mod tests {
     fn fake_record(pos: i64, cigar: CigarString) -> Record {
         let mut rec = Record::new();
         rec.set_pos(pos);
-        rec.set_cigar(&cigar);
+        rec.set_cigar(Some(&cigar));
         rec
     }
 

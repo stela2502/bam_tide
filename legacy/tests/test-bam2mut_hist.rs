@@ -7,11 +7,7 @@ fn test_bam2mut_hist_output() {
     let is_release_mode = !cfg!(debug_assertions);
 
 
-    let command = if is_release_mode {
-        "./target/release/bam2mut_hist"
-    } else {
-        "./target/debug/bam2mut_hist"
-    };
+    let exe = env!("CARGO_BIN_EXE_bam-coverage");
 
     print!("{}",command);
 

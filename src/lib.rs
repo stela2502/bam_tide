@@ -1,3 +1,4 @@
 pub mod cli;
-pub mod alignment_policy;
-pub mod coverage;
+pub mod core;
+pub mod bed_data;
+pub mod data_iter;
