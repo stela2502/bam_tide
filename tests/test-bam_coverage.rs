@@ -1,7 +1,7 @@
 //test-bam_coverage.rs
 use std::process::Command;
 
-fn parse_bedgraph_lines(s: &str) -> Vec<(String, u32, u32, i64)> {
+fn parse_bedgraph_lines(s: &str) -> Vec<(String, u32, u32, f32)> {
     s.lines()
         .filter(|l| !l.trim().is_empty() && !l.starts_with("track"))
         .map(|line| {
@@ -12,7 +12,7 @@ fn parse_bedgraph_lines(s: &str) -> Vec<(String, u32, u32, i64)> {
 
             // your output appears integer-like (e.g. 54), so parse as i64.
             // If you later emit floats, switch to f32 and epsilon compare.
-            let val: i64 = it.next().unwrap().parse().unwrap();
+            let val: f32 = it.next().unwrap().parse().unwrap();
 
             (chr, start, end, val)
         })
@@ -53,17 +53,17 @@ fn test_bam_coverage_bedgraph_runs_and_outputs_lines() {
     let rows = parse_bedgraph_lines(&s);
     // Compare a small stable prefix of non-zero bins
     // 2) Exact first 10 lines (your `head`)
-    let expected_head: Vec<(String, u32, u32, i64)> = vec![
-        ("chr1".to_string(), 0, 248_956_422, 0),
-        ("chr2".to_string(), 0, 242_193_529, 0),
-        ("chr3".to_string(), 0, 198_295_559, 0),
-        ("chr4".to_string(), 0, 190_214_555, 0),
-        ("chr5".to_string(), 0, 181_538_259, 0),
-        ("chr6".to_string(), 0, 170_805_979, 0),
-        ("chr7".to_string(), 0, 159_345_973, 0),
-        ("chr8".to_string(), 0, 145_138_636, 0),
-        ("chr9".to_string(), 0, 138_394_717, 0),
-        ("chr10".to_string(), 0, 133_797_422, 0),
+    let expected_head: Vec<(String, u32, u32, f32)> = vec![
+        ("chr1".to_string(), 0, 248_956_422, 0.0),
+        ("chr2".to_string(), 0, 242_193_529, 0.0),
+        ("chr3".to_string(), 0, 198_295_559, 0.0),
+        ("chr4".to_string(), 0, 190_214_555, 0.0),
+        ("chr5".to_string(), 0, 181_538_259, 0.0),
+        ("chr6".to_string(), 0, 170_805_979, 0.0),
+        ("chr7".to_string(), 0, 159_345_973, 0.0),
+        ("chr8".to_string(), 0, 145_138_636, 0.0),
+        ("chr9".to_string(), 0, 138_394_717, 0.0),
+        ("chr10".to_string(), 0, 133_797_422, 0.0),
     ];
 
     for (i, exp) in expected_head.iter().enumerate() {
@@ -78,13 +78,13 @@ fn test_bam_coverage_bedgraph_runs_and_outputs_lines() {
     );
 
     // 3) First 10 non-zero lines (your grep -v "\s0$" | head)
-    let nonzero: Vec<(String, u32, u32, i64)> = rows
+    let nonzero: Vec<(String, u32, u32, f32)> = rows
         .iter()
         .cloned()
-        .filter(|(_, _, _, v)| *v != 0)
+        .filter(|(_, _, _, v)| *v as f32 != 0.0)
         .collect();
 
-    let expected_chrM_prefix: Vec<(String, u32, u32, i64)> = vec![
+    let expected_chrM_prefix: Vec<(String, u32, u32, f32)> = vec![
         ("chrM".to_string(), 0, 10, 5.4),
         ("chrM".to_string(), 10, 20, 20.4),
         ("chrM".to_string(), 20, 30, 57.3),
