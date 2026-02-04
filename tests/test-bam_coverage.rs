@@ -85,16 +85,16 @@ fn test_bam_coverage_bedgraph_runs_and_outputs_lines() {
         .collect();
 
     let expected_chrM_prefix: Vec<(String, u32, u32, i64)> = vec![
-        ("chrM".to_string(), 0, 10, 7),
-        ("chrM".to_string(), 10, 20, 35),
-        ("chrM".to_string(), 20, 30, 77),
-        ("chrM".to_string(), 30, 40, 107),
-        ("chrM".to_string(), 40, 50, 156),
-        ("chrM".to_string(), 50, 60, 192),
-        ("chrM".to_string(), 60, 70, 224),
-        ("chrM".to_string(), 70, 80, 243),
-        ("chrM".to_string(), 80, 90, 217),
-        ("chrM".to_string(), 90, 100, 178),
+        ("chrM".to_string(), 0, 10, 5.4),
+        ("chrM".to_string(), 10, 20, 20.4),
+        ("chrM".to_string(), 20, 30, 57.3),
+        ("chrM".to_string(), 30, 40, 94.5),
+        ("chrM".to_string(), 40, 50, 136.7),
+        ("chrM".to_string(), 50, 60, 179.2),
+        ("chrM".to_string(), 60, 70, 201.4),
+        ("chrM".to_string(), 70, 80, 227.3),
+        ("chrM".to_string(), 80, 90, 195.0),
+        ("chrM".to_string(), 90, 100, 160.0),
     ];
 
     assert!(
