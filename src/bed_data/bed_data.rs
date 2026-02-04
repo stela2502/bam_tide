@@ -155,7 +155,8 @@ impl BedData {
 
                 if overlap > 0 {
                     let index = *chrom_offset + id;
-                    self.coverage_data[index] += 1.0;
+                    //self.coverage_data[index] += 1.0;
+                    self.coverage_data[index] += overlap as f32;
                 }
             }
         }
@@ -166,21 +167,63 @@ impl BedData {
     // ============================
 
     pub fn normalize(&mut self, by: &Normalize) {
+        // Step 0: convert from "covered bases per bin" to "mean depth per base in bin"
+        // This matches deepTools default (normalizeUsing None).
+        let bw = self.bin_width as f32;
+        self.coverage_data.par_iter_mut().for_each(|x| *x /= bw);
+
         match by {
-            Normalize::Not => {}
-            Normalize::Rpkm => {
-                let div: f32 =
-                    (self.nreads * self.bin_width) as f32 / 1_000_000.0 / 1_000.0;
-                self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+            Normalize::Not => {
+                // already mean depth
             }
+
             Normalize::Cpm => {
-                let div: f32 = self.nreads as f32 / 1_000_000.0;
-                self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+                // CPM: scale by mapped reads per million
+                // mean_depth / (nreads / 1e6)
+                let denom = (self.nreads as f32) / 1_000_000.0;
+                if denom > 0.0 {
+                    self.coverage_data.par_iter_mut().for_each(|x| *x /= denom);
+                }
             }
+
+            Normalize::Rpkm => {
+                // RPKM for binned coverage:
+                // RPKM = (reads_in_bin) / (reads_in_millions * bin_length_in_kb)
+                //
+                // We currently have mean depth (bases/bin_width).
+                // For a fixed bin width, mean depth is proportional to reads_in_bin/bin_width.
+                //
+                // The simplest compatible definition used in coverage tools is:
+                // mean_depth / (reads_in_millions) * (1 / bin_length_in_kb)
+                //
+                // Since bin_length_in_kb = bin_width / 1000:
+                // divide by (reads_in_millions * (bin_width/1000)) == divide by reads_in_millions, then multiply by 1000/bin_width.
+                //
+                // But because we already divided by bin_width to get mean depth, we should NOT divide by bin_width again.
+                // So: RPKM = mean_depth / reads_in_millions * 1000
+                //
+                // (This matches: (bases/bin_width) / (reads/1e6) * 1000
+                //  = bases * 1e6 * 1000 / (reads * bin_width), which is the classic scaling.)
+                let rpm = (self.nreads as f32) / 1_000_000.0;
+                if rpm > 0.0 {
+                    self.coverage_data
+                        .par_iter_mut()
+                        .for_each(|x| *x = (*x / rpm) * 1000.0);
+                }
+            }
+
             Normalize::Bpm => {
-                let div: f32 = self.coverage_data.par_iter().sum();
-                self.coverage_data.par_iter_mut().for_each(|x| *x /= div);
+                // BPM: bins per million mapped reads (deepTools calls this BPM / RPGC variants differently)
+                // Your previous implementation divided by sum(signal). That is more like "fraction of total signal".
+                // If you want "per million bins" style, you'd typically scale by total signal per million.
+                //
+                // Keeping your original intent (normalize by total signal):
+                let total: f32 = self.coverage_data.par_iter().sum();
+                if total > 0.0 {
+                    self.coverage_data.par_iter_mut().for_each(|x| *x /= total);
+                }
             }
+
             Normalize::Rpgc => {
                 panic!("Rpgc not implemented");
             }
