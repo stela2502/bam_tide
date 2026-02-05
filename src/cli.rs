@@ -61,4 +61,11 @@ pub struct CoverageCli {
     /// Include duplicate-marked reads
     #[arg(long, default_value_t = false)]
     pub include_duplicates: bool,
+
+    /// Exclude reads with ANY of these SAM flag bits set (deeptools --samFlagExclude).
+    /// Example: 2816 = secondary(256) + QC-fail(512) + supplementary(2048)
+    #[arg(long)]
+    pub sam_flag_exclude: Option<u16>,
+
+
 }

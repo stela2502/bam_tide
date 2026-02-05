@@ -155,8 +155,9 @@ impl BedData {
 
                 if overlap > 0 {
                     let index = *chrom_offset + id;
-                    //self.coverage_data[index] += 1.0;
-                    self.coverage_data[index] += overlap as f32;
+                    // HERE AFFECTS THE WAY WE COUNT
+                    self.coverage_data[index] += 1.0;
+                    //self.coverage_data[index] += overlap as f32;
                 }
             }
         }
@@ -169,8 +170,9 @@ impl BedData {
     pub fn normalize(&mut self, by: &Normalize) {
         // Step 0: convert from "covered bases per bin" to "mean depth per base in bin"
         // This matches deepTools default (normalizeUsing None).
-        let bw = self.bin_width as f32;
-        self.coverage_data.par_iter_mut().for_each(|x| *x /= bw);
+        // HERE AFFECTS THE WAY WE COUNT
+        //let bw = self.bin_width as f32;
+        //self.coverage_data.par_iter_mut().for_each(|x| *x /= bw);
 
         match by {
             Normalize::Not => {

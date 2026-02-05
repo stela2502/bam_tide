@@ -1,111 +1,96 @@
-//test-bam_coverage.rs
 use std::process::Command;
-
-fn parse_bedgraph_lines(s: &str) -> Vec<(String, u32, u32, f32)> {
-    s.lines()
-        .filter(|l| !l.trim().is_empty() && !l.starts_with("track"))
-        .map(|line| {
-            let mut it = line.split('\t');
-            let chr = it.next().unwrap().to_string();
-            let start: u32 = it.next().unwrap().parse().unwrap();
-            let end: u32 = it.next().unwrap().parse().unwrap();
-
-            // your output appears integer-like (e.g. 54), so parse as i64.
-            // If you later emit floats, switch to f32 and epsilon compare.
-            let val: f32 = it.next().unwrap().parse().unwrap();
-
-            (chr, start, end, val)
-        })
-        .collect()
-}
+use std::path::{Path,PathBuf};
 
 #[test]
-fn test_bam_coverage_bedgraph_runs_and_outputs_lines() {
-    // Cargo provides the built binary path.
+fn test_bam_coverage_matches_deeptools_bigwig() {
+    let bam = "legacy/testData/subset.bam";
+
+    let out_dir = PathBuf::from("legacy/testData");
+    let py_bw = out_dir.join("_ref_deeptools.bw");
+    let rs_bw = out_dir.join("_test_bam_coverage.bw");
+
+    // ------------------------------------------------------------------
+    // 1) Create reference BigWig with deeptools bamCoverage
+    // ------------------------------------------------------------------
+    if !Path::new(&py_bw).exists() {
+        let status = Command::new("bamCoverage")
+            .args([
+                "-b", bam,
+                "-o", py_bw.to_str().unwrap(),
+                "--binSize", "50",
+                "--normalizeUsing", "None",
+                "--minMappingQuality", "0",
+                //"--ignoreDuplicates",
+                "--extendReads", "0",
+                "--numberOfProcessors", "4",
+            ])
+            .status()
+            .expect("failed to run deeptools bamCoverage");
+
+        assert!(status.success(), "deeptools bamCoverage failed");
+    }
+
+    // ------------------------------------------------------------------
+    // 2) Create BigWig with our bam-coverage
+    // ------------------------------------------------------------------
     let exe = env!("CARGO_BIN_EXE_bam-coverage");
 
-    // Use a temp output file
-    //let out = tempfile::NamedTempFile::new().expect("tempfile");
-    //let out_path = out.path().to_path_buf();
-    let out_path = "legacy/testData/_out_bam_coverage.bedgraph";
-
-    let output = Command::new(exe)
+    let status = Command::new(exe)
         .args([
-            "-b", "legacy/testData/bowtie_chrm_mutated.bam",
-            "-o", out_path,
-            "-w", "10",
+            "-b", bam,
+            "-o", rs_bw.to_str().unwrap(),
+            "-w", "50",
             "--min-mapping-quality", "0",
         ])
+        .status()
+        .expect("failed to run bam-coverage");
+
+    assert!(status.success(), "bam-coverage failed");
+
+    // ------------------------------------------------------------------
+    // 3) Compare using bw-compare
+    // ------------------------------------------------------------------
+    let cmp = env!("CARGO_BIN_EXE_bw-compare");
+
+    let output = Command::new(cmp)
+        .args([
+            "--python-bw", py_bw.to_str().unwrap(),
+            "--rust-bw", rs_bw.to_str().unwrap(),
+            "--bin-width", "50",
+            "--eps", "1e-4",
+        ])
         .output()
-        .expect("Failed to run bam-coverage");
+        .expect("failed to run bw-compare");
 
     if !output.status.success() {
         panic!(
-            "bam-coverage failed.\nstatus: {:?}\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
+            "bw-compare failed\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         );
     }
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Read output file and do basic sanity checks
-    let s = std::fs::read_to_string(&out_path).expect("read output");
-    let rows = parse_bedgraph_lines(&s);
-    // Compare a small stable prefix of non-zero bins
-    // 2) Exact first 10 lines (your `head`)
-    let expected_head: Vec<(String, u32, u32, f32)> = vec![
-        ("chr1".to_string(), 0, 248_956_422, 0.0),
-        ("chr2".to_string(), 0, 242_193_529, 0.0),
-        ("chr3".to_string(), 0, 198_295_559, 0.0),
-        ("chr4".to_string(), 0, 190_214_555, 0.0),
-        ("chr5".to_string(), 0, 181_538_259, 0.0),
-        ("chr6".to_string(), 0, 170_805_979, 0.0),
-        ("chr7".to_string(), 0, 159_345_973, 0.0),
-        ("chr8".to_string(), 0, 145_138_636, 0.0),
-        ("chr9".to_string(), 0, 138_394_717, 0.0),
-        ("chr10".to_string(), 0, 133_797_422, 0.0),
-    ];
+    parse_total_line( &stderr );
 
-    for (i, exp) in expected_head.iter().enumerate() {
-        assert_eq!(&rows[i], exp, "Mismatch in head line {i}");
+}
+
+fn parse_total_line(stdout: &str) -> (f64, f64, f64, f64) {
+    for line in stdout.lines() {
+        if line.starts_with("TOTAL") {
+            let parts: Vec<&str> = line.split('\t').collect();
+            assert!(
+                parts.len() >= 5,
+                "Malformed TOTAL line: {line}"
+            );
+
+            let max_abs: f64 = parts[1].parse().unwrap();
+            let mean_abs: f64 = parts[2].parse().unwrap();
+            let rmse: f64 = parts[3].parse().unwrap();
+            let frac_over: f64 = parts[4].parse().unwrap();
+
+            return (max_abs, mean_abs, rmse, frac_over);
+        }
     }
-
-    assert!(
-        rows.len() >= 1335,
-        "Too few rows: got {}, expected at least {}",
-        rows.len(),
-        1493
-    );
-
-    // 3) First 10 non-zero lines (your grep -v "\s0$" | head)
-    let nonzero: Vec<(String, u32, u32, f32)> = rows
-        .iter()
-        .cloned()
-        .filter(|(_, _, _, v)| *v as f32 != 0.0)
-        .collect();
-
-    let expected_chrM_prefix: Vec<(String, u32, u32, f32)> = vec![
-        ("chrM".to_string(), 0, 10, 5.4),
-        ("chrM".to_string(), 10, 20, 20.4),
-        ("chrM".to_string(), 20, 30, 57.3),
-        ("chrM".to_string(), 30, 40, 94.5),
-        ("chrM".to_string(), 40, 50, 136.7),
-        ("chrM".to_string(), 50, 60, 179.2),
-        ("chrM".to_string(), 60, 70, 201.4),
-        ("chrM".to_string(), 70, 80, 227.3),
-        ("chrM".to_string(), 80, 90, 195.0),
-        ("chrM".to_string(), 90, 100, 160.0),
-    ];
-
-    assert!(
-        nonzero.len() >= 1122,
-        "Too few non-zero rows: got {}, expected at least {}",
-        nonzero.len(),
-        1280
-    );
-
-    for (i, exp) in expected_chrM_prefix.iter().enumerate() {
-        assert_eq!(&nonzero[i], exp, "Mismatch in first non-zero line {i}");
-    }
-
+    panic!("No TOTAL line found in bw-compare output:\n{stdout}");
 }

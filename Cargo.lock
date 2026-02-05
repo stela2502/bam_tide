@@ -85,6 +85,7 @@ dependencies = [
 name = "bam_tide"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bigtools",
  "clap",
  "rayon",
