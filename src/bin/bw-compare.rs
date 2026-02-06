@@ -10,27 +10,61 @@ use bam_tide::compare_report::CompareReport;
 use bigtools::{BigWigRead, ChromInfo};
 use bigtools::utils::reopen::ReopenableFile;
 
+use std::fs::File;
+use std::io::{Write, BufWriter};
+
 type BwReader = BigWigRead<ReopenableFile>;
 
-/// Verify Rust bam-coverage against python bamCoverage BigWig
+/// Compare two BigWig files (typically python bamCoverage vs. rust bam-coverage)
+/// and report per-chromosome and global differences.
+///
+/// The tool bins both BigWigs with the same bin width and compares the values
+/// position by position. It reports several statistics describing how different
+/// the signals are.
+///
+/// Output columns:
+///   n_over_eps       Number of bins where |python - rust| > eps
+///   frac_n_over_eps  Fraction of bins over eps
+///   mean_abs         Mean absolute difference
+///   var_abs          Variance of absolute differences
+///   rmse             Root mean squared error
+///   max_abs          Maximum absolute difference
+///   pearson_rho      Pearson correlation between tracks
+///
+/// A final TOTAL line summarizes all chromosomes.
+///
+/// If --outfile is not given, a report file will be created automatically:
+///   bw_compare_<rust_basename>_w<bin_width>.txt
 #[derive(Parser, Debug)]
-#[command(author, version, about)]
+#[command(
+    author,
+    version,
+    about = "Compare two BigWig files and report coverage differences"
+)]
 struct Args {
-    /// Python-generated BigWig
-    #[arg(long)]
+    /// Python-generated BigWig (reference)
+    #[arg(long, value_name = "FILE")]
     python_bw: PathBuf,
 
-    /// Rust-generated BigWig
-    #[arg(long)]
+    /// Rust-generated BigWig (to be validated)
+    #[arg(long, value_name = "FILE")]
     rust_bw: PathBuf,
 
-    /// Bin width (must match coverage generation)
-    #[arg(long, default_value_t = 50)]
+    /// Bin width used during coverage generation (must match both files)
+    #[arg(long, default_value_t = 50, value_name = "INT")]
     bin_width: u32,
 
-    /// Epsilon threshold
-    #[arg(long, default_value_t = 1e-5)]
+    /// Epsilon threshold for counting a bin as different
+    /// (|python - rust| > eps)
+    #[arg(long, default_value_t = 1e-5, value_name = "FLOAT")]
     eps: f64,
+
+    /// Optional output file for the comparison report.
+    ///
+    /// If not provided, the report is written to:
+    ///   bw_compare_<rust_basename>_w<bin_width>.txt
+    #[arg(long, value_name = "FILE")]
+    outfile: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -41,6 +75,13 @@ fn main() -> Result<()> {
 
     let mut rs = BigWigRead::open_file(&args.rust_bw)
         .with_context(|| format!("open rust BW {}", args.rust_bw.display()))?;
+
+    let mut out: Box<dyn Write> = if let Some(p) = args.outfile.clone() {
+        Box::new(BufWriter::new(File::create(p)?))
+    } else {
+        // fallback: write nowhere
+        Box::new(std::io::sink())
+    };
 
     // Read chrom lists
     let py_chroms: Vec<ChromInfo> = py.chroms().iter().map(|s| s.clone()).collect();
@@ -70,7 +111,11 @@ fn main() -> Result<()> {
 
     // Header
     let (n_over, frac, mean, var, rmse, max) = CompareReport::finish_names();
-    println!("CHR\t{}\t{}\t{}\t{}\t{}\t{}\tpearson_rho", n_over, frac, mean, var, rmse, max);
+    writeln!(
+        out,
+        "CHR\t{}\t{}\t{}\t{}\t{}\t{}\tpearson_rho",
+        n_over, frac, mean, var, rmse, max
+    )?;
 
     for c in &py_chroms {
         let chr = c.name.as_str();
@@ -85,20 +130,31 @@ fn main() -> Result<()> {
         // NEW finish()
         let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = chr_rep.finish();
 
-        println!(
-            "{}\t{:.0}\t{}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+        writeln!(out, "{}",format!(
+            "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
             chr,
-            n_over_eps,          // integer count
-            frac_n_over_eps,     // fraction
+            n_over_eps,
+            frac_n_over_eps,
             mean_abs,
             var_abs,
             rmse,
             max_abs,
             chr_rep.pearson()
-        );
+        ));
 
         total.merge(&chr_rep);
     }
+    let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = total.finish();
+    writeln!(out, "{}",format!(
+            "TOTAL\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+            n_over_eps,
+            frac_n_over_eps,
+            mean_abs,
+            var_abs,
+            rmse,
+            max_abs,
+            chr_rep.pearson()
+        ));
 }
 
 /// Create a binned representation of a BigWig chromosome
