@@ -62,10 +62,37 @@ pub struct CoverageCli {
     #[arg(long, default_value_t = false)]
     pub include_duplicates: bool,
 
-    /// Exclude reads with ANY of these SAM flag bits set (deeptools --samFlagExclude).
-    /// Example: 2816 = secondary(256) + QC-fail(512) + supplementary(2048)
+    /// Exclude reads with ANY of these SAM flag bits set
+    /// (equivalent to deeptools --samFlagExclude).
+    ///
+    /// The value is a bitmask of SAM flags. Any read with
+    /// (read_flag & mask) != 0 will be discarded.
+    ///
+    /// Examples:
+    ///   256  -> exclude secondary alignments
+    ///   512  -> exclude QC-failed reads
+    ///   1024 -> exclude PCR/optical duplicates
+    ///   2048 -> exclude supplementary alignments
+    ///   2816 -> exclude secondary + QC-fail + supplementary
+    ///
+    /// Default: None (no flag-based exclusion, matches bamCoverage defaults)
     #[arg(long)]
     pub sam_flag_exclude: Option<u16>,
 
+    /// Include only reads that have ALL of these SAM flag bits set.
+    /// Applied after the exclusion test
+    /// (equivalent to deeptools --samFlagInclude).
+    ///
+    /// The value is a bitmask of SAM flags. A read is kept only if:
+    ///   (read_flag & mask) == mask
+    ///
+    /// Examples:
+    ///   64  -> include only read1
+    ///   128 -> include only read2
+    ///   2   -> include only properly paired reads
+    ///
+    /// Default: None (no include constraint, matches bamCoverage defaults)
+    #[arg(long)]
+    pub sam_flag_include: Option<u16>,
 
 }

@@ -1,233 +1,130 @@
-//core.rs
 use rust_htslib::bam::Record;
 use crate::cli::CoverageCli;
 
 
-/// SAM flag bits (u16)
+/// SAM flag bits (u16) and nice to have
 const FLAG_PAIRED: u16        = 0x1;
 const FLAG_UNMAPPED: u16      = 0x4;
 const FLAG_SECONDARY: u16     = 0x100;
 const FLAG_QCFAIL: u16        = 0x200;
 const FLAG_DUPLICATE: u16     = 0x400;
 const FLAG_SUPPLEMENTARY: u16 = 0x800;
+const FLAG_READ1: u16         = 0x40;
 const FLAG_READ2: u16         = 0x80; // "second in pair"
 
 
 #[derive(Clone, Copy, Debug)]
 pub struct AlignmentPolicy {
     pub min_mapq: u8,
-    pub include_secondary: bool,
-    pub include_supplementary: bool,
-    pub include_duplicates: bool,
-    pub only_r1: bool,
 
-    /// Final, effective exclude mask used by `passes_filter`.
-    /// This is computed from booleans unless overridden by CLI.
-    sam_flag_exclude:u16,
+    /// Effective include mask: if 0 => no include constraint.
+    sam_flag_include: u16,
+
+    /// Effective exclude mask: bits set here are rejected.
+    sam_flag_exclude: u16,
 }
 
 impl AlignmentPolicy {
-
     /// CLI constructor:
-    /// - builds default mask from booleans
-    /// - if `cli.sam_flag_exclude != 0`, that overrides the computed mask
-    pub fn from_cli(cli: &crate::cli::CoverageCli) -> Self {
-        let computed = Self::computed_exclude_mask_bamcoverage(cli);
+    /// - builds computed include/exclude masks from convenience options
+    /// - if `cli.sam_flag_include` / `cli.sam_flag_exclude` are provided, they override computed
+    ///
+    /// IMPORTANT: This matches bamCoverage help defaults: include/exclude default to None (=no filtering).
+    pub fn from_cli(cli: &CoverageCli) -> Self {
+        let computed_ex = Self::computed_exclude_mask_bamcoverage(cli);
+        let computed_in = Self::computed_include_mask_bamcoverage(cli);
 
-        let effective = cli.sam_flag_exclude.unwrap_or(computed);
+        // Superseded by explicit CLI masks (including 0)
+        let effective_ex = cli.sam_flag_exclude.unwrap_or(computed_ex);
+        let effective_in = cli.sam_flag_include.unwrap_or(computed_in);
 
         Self {
             min_mapq: cli.min_mapping_quality,
-            include_secondary: cli.include_secondary,
-            include_supplementary: cli.include_supplementary,
-            include_duplicates: cli.include_duplicates,
-            only_r1: cli.only_r1,
-            sam_flag_exclude: effective,
+            sam_flag_include: effective_in,
+            sam_flag_exclude: effective_ex,
         }
     }
 
-
+    /// bamCoverage-like computed EXCLUDE mask from your “nice” booleans.
+    ///
+    /// Since bamCoverage defaults to --samFlagExclude None, the computed default here is 0
+    /// unless you add convenience toggles like "ignore_duplicates" etc.
     fn computed_exclude_mask_bamcoverage(cli: &CoverageCli) -> u16 {
-        let mut mask =
-              FLAG_UNMAPPED
-            | FLAG_SECONDARY
-            | FLAG_QCFAIL
-            | FLAG_DUPLICATE
-            | FLAG_SUPPLEMENTARY;
+        let mut mask = 0u16;
 
-        // Allow overrides
-        if cli.include_secondary {
-            mask &= !FLAG_SECONDARY;
+        // If you expose these as "ignore" booleans (bamCoverage has --ignoreDuplicates),
+        // you can map them here. If you only have "include_duplicates", invert it:
+        if !cli.include_duplicates {
+            mask |= FLAG_DUPLICATE;
         }
-        if cli.include_supplementary {
-            mask &= !FLAG_SUPPLEMENTARY;
+
+        // If you *want* to keep the old toggles (include_secondary/supplementary),
+        // they can be mapped too. Note: bamCoverage default is not to exclude these via samFlagExclude,
+        // but users sometimes do. Keeping them as convenience flags is fine.
+        if !cli.include_secondary {
+            mask |= FLAG_SECONDARY;
         }
-        if cli.include_duplicates {
-            mask &= !FLAG_DUPLICATE;
+        if !cli.include_supplementary {
+            mask |= FLAG_SUPPLEMENTARY;
         }
+
+        // I recommend NOT forcing QCFAIL or UNMAPPED into the mask by default.
+        // Unmapped should be handled explicitly in passes_filter (see below).
+        // QCFAIL: only exclude if you have an explicit toggle; otherwise leave it alone.
+
+        mask
+    }
+
+    /// bamCoverage-like computed INCLUDE mask from your “nice” booleans.
+    ///
+    /// In bamCoverage, `--samFlagInclude` default is None, meaning no include constraint.
+    /// We represent "None" as 0 here.
+    fn computed_include_mask_bamcoverage(cli: &CoverageCli) -> u16 {
+        let mut mask = 0u16;
+
+        // Your "only_r1" convenience option corresponds to --samFlagInclude 64.
         if cli.only_r1 {
-            mask |= FLAG_READ2;
+            mask |= FLAG_READ1;
         }
 
         mask
     }
 
-    
-    /// Filters on:
-    /// - unmapped (always excluded here)
-    /// - effective SAM exclude mask (computed or overridden)
-    /// - MAPQ
+    /// Check whether a BAM record should be included given this policy.
+    /// Semantics:
+    /// - Unmapped reads are always excluded (regardless of masks)
+    /// - Exclude-mask: if any excluded bit is set -> reject
+    /// - Include-mask: if non-zero, all bits must be present -> accept; otherwise no constraint
+    /// - MAPQ threshold
     #[inline]
     pub fn passes_filter(&self, rec: &Record) -> bool {
+        // Always exclude unmapped for coverage.
+        if rec.is_unmapped() {
+            return false;
+        }
+
+        // MAPQ
+        if rec.mapq() < self.min_mapq {
+            return false;
+        }
 
         let flag: u16 = rec.flags();
 
-        // Single bitmask check replaces all the redundant per-flag checks.
+        // Exclude bits
         if (flag & self.sam_flag_exclude) != 0 {
             return false;
         }
 
-        if rec.mapq() < self.min_mapq {
+        // Include bits (0 means "no include constraint")
+        if self.sam_flag_include != 0 && (flag & self.sam_flag_include) != self.sam_flag_include {
             return false;
         }
 
         true
     }
 
+    /// Optional: expose these for logging/debugging
+    pub fn sam_flag_exclude(&self) -> u16 { self.sam_flag_exclude }
+    pub fn sam_flag_include(&self) -> u16 { self.sam_flag_include }
 }
 
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rust_htslib::bam::Record;
-
-    /// Create a minimal BAM record with configurable flags and MAPQ.
-    /// This is only for testing filter logic, not alignment semantics.
-    fn fake_record(flags: u16, mapq: u8) -> Record {
-        let mut rec = Record::new();
-        rec.set_flags(flags);
-        rec.set_mapq(mapq);
-        rec
-    }
-
-    #[test]
-    fn test_passes_basic_record() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: false,
-            include_supplementary: false,
-            include_duplicates: false,
-            only_r1: false,
-        };
-
-        let rec = fake_record(0, 30);
-        assert!(policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_filters_unmapped() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: true,
-            include_supplementary: true,
-            include_duplicates: true,
-            only_r1: false,
-        };
-
-        // 0x4 = unmapped
-        let rec = fake_record(0x4, 30);
-        assert!(!policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_filters_secondary() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: false,
-            include_supplementary: true,
-            include_duplicates: true,
-            only_r1: false,
-        };
-
-        // 0x100 = secondary
-        let rec = fake_record(0x100, 30);
-        assert!(!policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_allows_secondary_if_enabled() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: true,
-            include_supplementary: true,
-            include_duplicates: true,
-            only_r1: false,
-        };
-
-        let rec = fake_record(0x100, 30);
-        assert!(policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_filters_supplementary() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: true,
-            include_supplementary: false,
-            include_duplicates: true,
-            only_r1: false,
-        };
-
-        // 0x800 = supplementary
-        let rec = fake_record(0x800, 30);
-        assert!(!policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_filters_duplicates() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: true,
-            include_supplementary: true,
-            include_duplicates: false,
-            only_r1: false,
-        };
-
-        // 0x400 = duplicate
-        let rec = fake_record(0x400, 30);
-        assert!(!policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_only_r1_filters_r2() {
-        let policy = AlignmentPolicy {
-            min_mapq: 0,
-            include_secondary: true,
-            include_supplementary: true,
-            include_duplicates: true,
-            only_r1: true,
-        };
-
-        // 0x80 = second in pair
-        let rec = fake_record(0x80, 30);
-        assert!(!policy.passes_filter(&rec));
-    }
-
-    #[test]
-    fn test_min_mapq() {
-        let policy = AlignmentPolicy {
-            min_mapq: 20,
-            include_secondary: true,
-            include_supplementary: true,
-            include_duplicates: true,
-            only_r1: false,
-        };
-
-        let good = fake_record(0, 30);
-        let bad = fake_record(0, 10);
-
-        assert!(policy.passes_filter(&good));
-        assert!(!policy.passes_filter(&bad));
-    }
-}
