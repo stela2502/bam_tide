@@ -63,7 +63,7 @@ OUT="$("$BWCOMPARE" --python-bw "$PY_BW" --rust-bw "$RS_BW" --bin-width "$BIN_WI
 RC=$?
 set -e
 
-echo "$OUT" | tee "$TMP_REPORT" > "$REPORT_TXT"
+echo "$OUT" | tee "$TMP_REPORT" #> "$REPORT_TXT"
 
 if [[ $RC -ne 0 ]]; then
   echo "bw-compare exited with code $RC" >&2
