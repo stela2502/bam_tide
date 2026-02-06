@@ -99,6 +99,7 @@ fn main() -> Result<()> {
 
         total.merge(&chr_rep);
     }
+    Ok(())
 }
 
 /// Create a binned representation of a BigWig chromosome
