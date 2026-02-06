@@ -68,7 +68,9 @@ fn main() -> Result<()> {
 
     let mut total = CompareReport::default();
 
-    println!("CHR\tmax_abs\tmean_abs\trmse\tfrac_over\tpearson rho");
+    // Header
+    let (n_over, frac, mean, var, rmse, max) = CompareReport::finish_names();
+    println!("CHR\t{}\t{}\t{}\t{}\t{}\t{}\tpearson_rho", n_over, frac, mean, var, rmse, max);
 
     for c in &py_chroms {
         let chr = c.name.as_str();
@@ -80,23 +82,23 @@ fn main() -> Result<()> {
         let mut chr_rep = CompareReport::default();
         chr_rep.update_from_bins(&py_bins, &rs_bins, args.eps);
 
-        let (frac, mean, rmse) = chr_rep.finish();
+        // NEW finish()
+        let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = chr_rep.finish();
 
         println!(
-            "{}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}\t{:.4}",
-            chr, chr_rep.max_abs, mean, rmse, frac, chr_rep.pearson()
+            "{}\t{:.0}\t{}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+            chr,
+            n_over_eps,          // integer count
+            frac_n_over_eps,     // fraction
+            mean_abs,
+            var_abs,
+            rmse,
+            max_abs,
+            chr_rep.pearson()
         );
 
         total.merge(&chr_rep);
     }
-
-    let (frac, mean, rmse) = total.finish();
-    println!(
-        "TOTAL\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}\t{:.4}",
-        total.max_abs, mean, rmse, frac, total.pearson()
-    );
-
-    Ok(())
 }
 
 /// Create a binned representation of a BigWig chromosome

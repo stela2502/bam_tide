@@ -1,6 +1,6 @@
 #[derive(Debug, Default, Clone)]
 pub struct CompareReport {
-    pub n: u64,
+    pub n: usize,
     pub n_over: u64,
     pub max_abs: f64,
     pub sum_abs: f64,
@@ -56,18 +56,49 @@ impl CompareReport {
         self.sum_xy += other.sum_xy;
     }
 
-    pub fn finish(&self) -> (f64, f64, f64) {
-        // (frac_over, mean_abs, rmse)
+    pub fn finish(&self) -> (usize, f64, f64, f64, f64, f64) {
+        // (
+        //   n_over_eps,
+        //   frac_n_over_eps,
+        //   mean_abs,
+        //   var_abs,
+        //   rmse,
+        //   max_abs
+        // )
         if self.n == 0 {
-            (0.0, 0.0, 0.0)
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         } else {
             let n = self.n as f64;
+
+            let frac = self.n_over_eps as f64 / n;
+            let mean_abs = self.sum_abs / n;
+
+            // variance of absolute difference
+            // E[d²] − (E[|d|])²
+            let var_abs = (self.sum_sq / n) - (mean_abs * mean_abs);
+
+            let rmse = (self.sum_sq / n).sqrt();
+
             (
-                self.n_over as f64 / n,
-                self.sum_abs / n,
-                (self.sum_sq / n).sqrt(),
+                self.n_over_eps,
+                frac,
+                mean_abs,
+                var_abs.max(0.0), // numerical safety
+                rmse,
+                self.max_abs,
             )
         }
+    }
+
+    pub fn finish_names() -> (&'static str, &'static str, &'static str, &'static str, &'static str) {
+        (
+            "n_over_eps",
+            "frac_n_over_eps",
+            "mean_abs",
+            "var_abs",
+            "rmse",
+            "max_abs",
+        )
     }
 
     pub fn pearson(&self) -> f64 {

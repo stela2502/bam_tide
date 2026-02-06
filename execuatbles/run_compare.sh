@@ -6,14 +6,19 @@ set -euo pipefail
 : "${BAMCOVERAGE_RS:=bam-coverage}"   # your rust tool
 : "${BWCOMPARE:=bw-compare}"          # your comparator
 
+
+
 # ---- args ----
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <input.bam> [bin_width]"
+  echo "Usage: $0 <input.bam> [bin_width] [rust_options]"
   exit 2
 fi
 
 BAM="$1"
 BIN_WIDTH="${2:-50}"
+shift 2
+RUST_OPTS="$@"
+
 
 if [[ ! -f "$BAM" ]]; then
   echo "ERROR: BAM not found: $BAM" >&2
@@ -52,8 +57,8 @@ else
 fi
 
 # ---- 2) create rust bw (always regenerate, safer while iterating) ----
-echo "[2/3] Creating rust BW with $BAMCOVERAGE_RS..."
-"$BAMCOVERAGE_RS" -b "$BAM" -o "$RS_BW" -w "$BIN_WIDTH" --min-mapping-quality 0
+echo "[2/3] Creating rust BW with $BAMCOVERAGE_RS -b $BAM -o $RS_BW -w $BIN_WIDTH $RUST_OPTS ..."
+"$BAMCOVERAGE_RS" -b "$BAM" -o "$RS_BW" -w "$BIN_WIDTH" $RUST_OPTS 
 
 # ---- 3) compare ----
 echo "[3/3] Comparing..."
@@ -73,4 +78,3 @@ fi
 echo
 echo "Saved:"
 echo "  $TMP_REPORT"
-echo "  $REPORT_TXT"
