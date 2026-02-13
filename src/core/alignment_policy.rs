@@ -104,7 +104,7 @@ impl AlignmentPolicy {
         }
 
         // MAPQ
-        if rec.mapq() < self.min_mapq {
+        if rec.mapq() < self.min_mapq && rec.mapq() == 255{
             return false;
         }
 

@@ -90,140 +90,124 @@ fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
 }
 
 #[test]
-fn rust_bigwig_matches_golden_deeptools() -> Result<(), String> {
+fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+    use tempfile::tempdir;
+
     // --- config ---
     let bam = Path::new("legacy/testData/subset.bam");
     let golden = Path::new("legacy/testData/subset.deepTools.bw");
     let bin_width: u32 = 50;
 
-    // Thresholds (tune once you have a stable baseline)
-    let eps_abs: f64 = 1e-3;
-    let max_frac_bad: f64 = 1e-4;
-    let min_corr: f64 = 0.99;
+    // thresholds
+    let eps_abs: f64 = 0.0;
+    let max_frac_bad: f64 = 0.0;
+    let min_corr: f64 = 1.0;
 
     if !bam.exists() {
         return Err(format!("missing test BAM: {}", bam.display()));
     }
     if !golden.exists() {
-        return Err(format!(
-            "missing golden bigWig: {}\n\
-             Create it once using deepTools and commit it.\n\
-             Example:\n\
-             bamCoverage -b {} -o {} --outFileFormat bigwig --binSize {} --normalizeUsing None --samFlagExclude 3328 --minMappingQuality 0",
-            golden.display(),
-            bam.display(),
-            golden.display(),
-            bin_width
-        ));
+        return Err(format!("missing golden bigWig: {}", golden.display()));
     }
 
-    // --- run your tool to produce out.bw ---
     let tmp = tempdir().map_err(|e| format!("tempdir: {e:?}"))?;
     let out_bw = tmp.path().join("rust.bw");
+    let out_tsv = Path::new("legacy/testData/cmp.tsv");
 
-    let exe = exe_path("bam-coverage");
-    if !exe.exists() {
-        return Err(format!(
-            "missing binary: {} (build first: cargo build --release)",
-            exe.display()
-        ));
+    // --- produce rust bigWig ---
+    let exe_cov = exe_path("bam-coverage");
+    if !exe_cov.exists() {
+        return Err(format!("missing binary: {}", exe_cov.display()));
     }
 
-    // Adjust flags to match your CLI.
-    // IMPORTANT: choose settings matching the golden bamCoverage command:
-    // - same bin width
-    // - same normalize meaning (ideally mean coverage == deepTools None)
-    // - same filtering policy (secondary/supp/dups) if your tool supports it
-    run_ok(Command::new(&exe)
-        .args([
+    run_ok(
+        Command::new(&exe_cov).args([
             "-b", bam.to_str().unwrap(),
             "-o", out_bw.to_str().unwrap(),
             "-w", &bin_width.to_string(),
-            // make sure your output is bigWig in this binary / mode
-            // and normalization corresponds to deepTools "None"
             "-n", "not",
             "--min-mapping-quality", "0",
-            "--include-secondary", "false",
-            "--include-supplementary", "false",
-            "--include-duplicates", "false",
         ])
     )?;
 
-    // --- open bigWigs ---
-    let gf = File::open(golden).map_err(|e| format!("open golden bw: {e:?}"))?;
-    let of = File::open(&out_bw).map_err(|e| format!("open rust bw: {e:?}"))?;
+    if !out_bw.exists() || fs::metadata(&out_bw).map_err(|e| format!("stat rust.bw: {e:?}"))?.len() == 0 {
+        return Err("rust bigWig not created or empty".into());
+    }
 
-    let mut bw_g = BigWigRead::open(&gf).map_err(|e| format!("BigWigRead open golden: {e:?}"))?;
-    let mut bw_o = BigWigRead::open(&of).map_err(|e| format!("BigWigRead open rust: {e:?}"))?;
+    // --- compare with bw-compare ---
+    let exe_cmp = exe_path("bw-compare");
+    if !exe_cmp.exists() {
+        return Err(format!("missing binary: {}", exe_cmp.display()));
+    }
 
-    // Iterate chromosomes from golden (source of truth)
-    let chroms = bw_g.chroms().to_vec();
+    // IMPORTANT: adapt args to your bw-compare CLI.
+    // Goal: emit a TSV with a TOTAL row containing fields:
+    //   n_over_eps, frac_n_over_eps, mean_abs, rmse, max_abs, pearson_rho
+    run_ok(
+        Command::new(&exe_cmp).args([
+            "-a", golden.to_str().unwrap(),
+            "-b", out_bw.to_str().unwrap(),
+            "--eps", &eps_abs.to_string(),
+            "-o", out_tsv.to_str().unwrap(),
+        ])
+    )?;
 
-    let mut x = Vec::<f64>::new();
-    let mut y = Vec::<f64>::new();
+    let tsv = fs::read_to_string(&out_tsv).map_err(|e| format!("read cmp.tsv: {e:?}"))?;
 
-    let mut bins_with_signal = 0u64;
-    let mut bad_bins = 0u64;
-    let mut mean_abs_sum = 0.0_f64;
-    let mut max_abs = 0.0_f64;
-
-    for c in chroms {
-        let chr = c.name.as_str();
-        let len = c.length;
-
-        let mut start = 0u32;
-        while start < len {
-            let end = (start + bin_width).min(len);
-
-            let vg = bw_weighted_mean(&mut bw_g, chr, start, end)? as f64;
-            let vo = bw_weighted_mean(&mut bw_o, chr, start, end)? as f64;
-
-            if vg != 0.0 || vo != 0.0 {
-                bins_with_signal += 1;
-                let abs = (vo - vg).abs();
-                mean_abs_sum += abs;
-                if abs > max_abs {
-                    max_abs = abs;
-                }
-                if abs > eps_abs {
-                    bad_bins += 1;
-                }
-
-                x.push(vg);
-                y.push(vo);
-            }
-
-            start = end;
+    // --- parse TOTAL row ---
+    // Expected header like:
+    // flag  CHR  n_over_eps  frac_n_over_eps  mean_abs  var_abs  rmse  max_abs  pearson_rho ...
+    let mut total_line: Option<&str> = None;
+    for line in tsv.lines() {
+        if line.starts_with('#') || line.trim().is_empty() { continue; }
+        // Accept either "TOTAL" in CHR col, or line starting with "TOTAL"
+        if line.contains("TOTAL\t") || line.starts_with("TOTAL\t") {
+            total_line = Some(line);
+            break;
         }
     }
 
-    let mean_abs = if bins_with_signal > 0 {
-        mean_abs_sum / bins_with_signal as f64
-    } else {
-        0.0
-    };
-    let frac_bad = if bins_with_signal > 0 {
-        bad_bins as f64 / bins_with_signal as f64
-    } else {
-        0.0
-    };
-    let corr = pearson_corr(&x, &y);
-
-    eprintln!(
-        "golden bigWig comparison:\n  bins_with_signal={}\n  bad_bins={}\n  frac_bad={:.3e}\n  mean_abs={:.6}\n  max_abs={:.6}\n  corr={:.6}",
-        bins_with_signal, bad_bins, frac_bad, mean_abs, max_abs, corr
+    let cmp_cmdline = format!(
+        "{} -a {} -b {}",
+        exe_cmp.display(),
+        golden.display(),
+        out_bw.display()
     );
 
-    if bins_with_signal == 0 {
-        return Err("comparison found zero signal bins; test BAM/golden likely wrong".into());
-    }
+    let line = total_line.ok_or_else(|| format!("no TOTAL row found in bw-compare output:\n{cmp_cmdline}\n{tsv}"))?;
+
+    let cols: Vec<&str> = line.split('\t').map(|s| s.trim()).collect();
+
+
+    // Try to locate columns by header if available; otherwise assume fixed indices.
+    // Here we assume:
+    // 0 flag, 1 CHR, 2 n_over_eps, 3 frac_n_over_eps, 4 mean_abs, 6 rmse, 7 max_abs, 8 pearson_rho
+    let frac_bad: f64 = cols.get(2).ok_or("missing frac_n_over_eps")?
+        .parse().map_err(|_| format!("bad frac_n_over_eps in: {line}"))?;
+    let mean_abs: f64 = cols.get(3).ok_or("missing mean_abs")?
+        .parse().map_err(|_| format!("bad mean_abs in: {line}"))?;
+    let max_abs: f64 = cols.get(6).ok_or("missing max_abs")?
+        .parse().map_err(|_| format!("bad max_abs in: {line}"))?;
+    let corr: f64 = cols.get(7).ok_or_else(|| format!("missing pearson_rho; line={line}"))?
+        .parse().map_err(|_| format!("bad pearson_rho in: {line}"))?;
+
+    eprintln!(
+        "bw-compare TOTAL: frac_bad={:.3e} mean_abs={:.6} max_abs={:.6} corr={:.6}",
+        frac_bad, mean_abs, max_abs, corr
+    );
+
     if frac_bad > max_frac_bad {
         return Err(format!("frac_bad too high: {frac_bad:.3e} > {max_frac_bad:.3e}"));
     }
+    // optional: mean_abs/max_abs checks, if you want
     if corr.is_nan() || corr < min_corr {
         return Err(format!("corr too low: {corr} < {min_corr}"));
     }
 
     Ok(())
 }
+
 

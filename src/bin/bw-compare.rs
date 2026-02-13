@@ -43,11 +43,11 @@ type BwReader = BigWigRead<ReopenableFile>;
 )]
 struct Args {
     /// Python-generated BigWig (reference)
-    #[arg(long, value_name = "FILE")]
+    #[arg(long, short='a' , value_name = "FILE")]
     python_bw: PathBuf,
 
     /// Rust-generated BigWig (to be validated)
-    #[arg(long, value_name = "FILE")]
+    #[arg(long, short='b', value_name = "FILE")]
     rust_bw: PathBuf,
 
     /// Bin width used during coverage generation (must match both files)
@@ -63,7 +63,7 @@ struct Args {
     ///
     /// If not provided, the report is written to:
     ///   bw_compare_<rust_basename>_w<bin_width>.txt
-    #[arg(long, value_name = "FILE")]
+    #[arg(long, short, value_name = "FILE")]
     outfile: Option<PathBuf>,
 }
 
@@ -125,7 +125,7 @@ fn main() -> Result<()> {
         let rs_bins = bins_from_bigwig(&mut rs, chr, chr_len, args.bin_width)?;
 
         let mut chr_rep = CompareReport::default();
-        chr_rep.update_from_bins(&py_bins, &rs_bins, args.eps);
+        chr_rep.update_from_bins(chr, chr_len as u64, args.bin_width as u64, &py_bins, &rs_bins, args.eps);
 
         // NEW finish()
         let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = chr_rep.finish();
@@ -155,6 +155,8 @@ fn main() -> Result<()> {
             max_abs,
             total.pearson()
         ));
+
+    println!("Most divergent bin:\n{:?}", total.max_bin );
     Ok(())
 }
 

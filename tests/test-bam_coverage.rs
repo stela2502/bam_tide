@@ -9,6 +9,10 @@ fn test_bam_coverage_matches_deeptools_bigwig() {
     let py_bw = out_dir.join("_ref_deeptools.bw");
     let rs_bw = out_dir.join("_test_bam_coverage.bw");
 
+    let eps_abs: f64 = 0.0;
+    let max_frac_bad: f64 = 0.0;
+    let min_corr: f64 = 1.0;
+
     // ------------------------------------------------------------------
     // 1) Create reference BigWig with deeptools bamCoverage
     // ------------------------------------------------------------------
@@ -69,28 +73,49 @@ fn test_bam_coverage_matches_deeptools_bigwig() {
             String::from_utf8_lossy(&output.stderr),
         );
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let cmp_cmdline = format!(
+        "{} -a {} -b {} --bin-width 50 --eps 1e-4",
+        cmp,
+        py_bw.display(),
+        rs_bw.display()
+    );
+    match parse_total_line( &stdout ){
+        Ok((frac_bad, _mean_abs, _max_abs, corr)) => {
+               if frac_bad > max_frac_bad {
+                    panic!("{}", format!("frac_bad too high: {frac_bad:.3e} > {max_frac_bad:.3e}") );
+                }
+                // optional: mean_abs/max_abs checks, if you want
+                if corr.is_nan() || corr < min_corr {
+                    panic!("{}", format!("corr too low: {corr} < {min_corr}"));
+                }
 
-    parse_total_line( &stderr );
+        },
+        Err(e) => panic!("{}",format!("{cmp_cmdline} create the wrong output {e:?} ")),
+    };
 
 }
 
-fn parse_total_line(stdout: &str) -> (f64, f64, f64, f64) {
+fn parse_total_line(stdout: &str) -> Result<(f64, f64, f64, f64),String> {
     for line in stdout.lines() {
-        if line.starts_with("TOTAL") {
-            let parts: Vec<&str> = line.split('\t').collect();
+        if line.contains("TOTAL\t") {
+            let cols: Vec<&str> = line.split('\t').collect();
             assert!(
-                parts.len() >= 5,
+                cols.len() >= 5,
                 "Malformed TOTAL line: {line}"
             );
 
-            let max_abs: f64 = parts[1].parse().unwrap();
-            let mean_abs: f64 = parts[2].parse().unwrap();
-            let rmse: f64 = parts[3].parse().unwrap();
-            let frac_over: f64 = parts[4].parse().unwrap();
+            let frac_bad: f64 = cols.get(2).ok_or("missing frac_n_over_eps")?
+                .parse().map_err(|_| format!("bad frac_n_over_eps in: {line}"))?;
+            let mean_abs: f64 = cols.get(3).ok_or("missing mean_abs")?
+                .parse().map_err(|_| format!("bad mean_abs in: {line}"))?;
+            let max_abs: f64 = cols.get(6).ok_or("missing max_abs")?
+                .parse().map_err(|_| format!("bad max_abs in: {line}"))?;
+            let corr: f64 = cols.get(7).ok_or_else(|| format!("missing pearson_rho; line={line}"))?
+                .parse().map_err(|_| format!("bad pearson_rho in: {line}"))?;
 
-            return (max_abs, mean_abs, rmse, frac_over);
+            return Ok((frac_bad, mean_abs, max_abs, corr));
         }
     }
-    panic!("No TOTAL line found in bw-compare output:\n{stdout}");
+    Err(format!("No TOTAL line found in bw-compare output:\n{stdout}"))
 }

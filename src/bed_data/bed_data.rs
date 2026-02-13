@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::fmt;
@@ -127,7 +127,6 @@ impl BedData {
     // ============================
     // Core accumulation
     // ============================
-
     pub fn add_ref_blocks(&mut self, chr: &str, blocks: &[RefBlock]) {
         let chr_id = match self.search.get(chr) {
             Some(id) => *id,
@@ -139,12 +138,18 @@ impl BedData {
 
         self.nreads += 1;
 
+        let mut hit_bins: HashSet<usize> = HashSet::new();
+
         for block in blocks {
             let start = block.start as usize;
             let end = block.end.min(*chrom_length as u32) as usize;
 
+            if end <= start {
+                continue;
+            }
+
             let start_window = start / self.bin_width;
-            let end_window   = end   / self.bin_width;
+            let end_window   = (end - 1) / self.bin_width; // correct half-open handling
 
             for id in start_window..=end_window {
                 let bin_start = id * self.bin_width;
@@ -154,14 +159,17 @@ impl BedData {
                     (end.min(bin_end)).saturating_sub(start.max(bin_start));
 
                 if overlap > 0 {
-                    let index = *chrom_offset + id;
-                    // HERE AFFECTS THE WAY WE COUNT
-                    self.coverage_data[index] += 1.0;
-                    //self.coverage_data[index] += overlap as f32;
+                    hit_bins.insert(id);
                 }
             }
         }
+
+        for id in hit_bins {
+            let index = *chrom_offset + id;
+            self.coverage_data[index] += 1.0;
+        }
     }
+
 
     // ============================
     // Normalization
@@ -285,6 +293,17 @@ impl BedData {
             }
         }
         None
+    }
+
+    pub fn idx_to_ucsc_pos(&self, idx: usize) -> Option<(String, usize, usize)> {
+        let (chr, chr_len, offset) = self.current_chr_for_id(idx)?;
+        let rel = idx - offset;
+        let start = rel * self.bin_width;
+        if start >= chr_len {
+            return None;
+        }
+        let end = (start + self.bin_width).min(chr_len);
+        Some((chr, start, end))
     }
 
     // ============================
@@ -505,5 +524,38 @@ mod binning_tests {
         // If you currently count it anyway, change expected here.
         assert_eq!(bed.nreads, 0);
         assert!((get_bin(&bed, "chr1", 0) - 0.0).abs() < EPS);
+    }
+
+    #[test]
+    fn add_ref_blocks_counts_read_once_per_bin_even_with_two_blocks() {
+        use std::collections::HashMap;
+
+        // Minimal BedData with one chr length 200, bin width 50 => 4 bins
+        let mut bed = BedData {
+            genome_info: vec![("MT".to_string(), 200usize, 0usize)],
+            search: {
+                let mut h = HashMap::new();
+                h.insert("MT".to_string(), 0usize);
+                h
+            },
+            coverage_data: vec![0.0_f32; 4],
+            bin_width: 50,
+            threads: 1,
+            nreads: 0,
+        };
+
+        // Two blocks, both inside bin 0 [0,50)
+        let blocks = vec![
+            RefBlock::new(10, 20),
+            RefBlock::new(30, 40),
+        ];
+
+        bed.add_ref_blocks("MT", &blocks);
+
+        assert_eq!(bed.nreads, 1);
+        assert_eq!(bed.coverage_data[0], 1.0, "bin 0 should be incremented once");
+        assert_eq!(bed.coverage_data[1], 0.0);
+        assert_eq!(bed.coverage_data[2], 0.0);
+        assert_eq!(bed.coverage_data[3], 0.0);
     }
 }

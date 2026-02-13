@@ -28,8 +28,6 @@ impl RefBlock {
 ///
 /// This function assumes the record is mapped; callers should filter unmapped reads beforehand.
 pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
-    // BAM position is 0-based; for unmapped reads it's typically -1.
-    // We assume filtering already removed unmapped records, but guard anyway.
     let pos0 = rec.pos();
     if pos0 < 0 {
         return Vec::new();
@@ -40,7 +38,7 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
 
     for op in rec.cigar().iter() {
         match *op {
-            // Coverage on reference: emit a block
+            // Coverage on reference
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
                 let len_u64 = len as u64;
                 if len_u64 == 0 {
@@ -50,10 +48,9 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
                 let start = ref_pos;
                 let end = ref_pos + len_u64;
 
-                // Merge with previous block if adjacent.
                 if let Some(last) = blocks.last_mut() {
-                    if last.end as u64 == start {
-                        // Safe because end fits in u64; we clamp to u32 below.
+                    // Merge if overlapping or directly adjacent
+                    if last.end as u64 >= start {
                         last.end = end.min(u32::MAX as u64) as u32;
                     } else {
                         blocks.push(RefBlock::new(
@@ -68,23 +65,26 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
                     ));
                 }
 
-                // Advance reference position
                 ref_pos = end;
             }
 
-            // Consumes reference but is not "covered bases"
-            // (deletions and splices/introns)
-            Cigar::Del(len) | Cigar::RefSkip(len) => {
+            // Deletion: advance reference but DO NOT break the block
+            Cigar::Del(len) => {
                 ref_pos += len as u64;
+                // do not end the block
             }
 
-            // Does not consume reference; no coverage emitted
-            Cigar::Ins(_len)
-            | Cigar::SoftClip(_len)
-            | Cigar::HardClip(_len)
-            | Cigar::Pad(_len) => {
-                // no-op for reference position
+            // Splice: break block
+            Cigar::RefSkip(len) => {
+                ref_pos += len as u64;
+                // forces new block next time
             }
+
+            // Does not consume reference
+            Cigar::Ins(_)
+            | Cigar::SoftClip(_)
+            | Cigar::HardClip(_)
+            | Cigar::Pad(_) => {}
         }
     }
 
@@ -93,10 +93,12 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
 
 
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rust_htslib::bam::record::{Cigar, CigarString};
+    use rust_htslib::bam::Record;
 
     fn fake_record(pos: i64, cigar: CigarString) -> Record {
         let mut rec = Record::new();
@@ -126,6 +128,61 @@ mod tests {
                 RefBlock { start: 115, end: 120 }
             ]
         );
+    }
+
+    /// Helper: build a BAM record with given position and CIGAR
+    fn make_record(pos: i64, cigar: Vec<Cigar>) -> Record {
+        let mut rec = Record::new();
+        rec.set_pos(pos);
+        rec.set_cigar(Some(&CigarString(cigar)));
+        rec
+    }
+
+    #[test]
+    fn test_deletion_splits_blocks() {
+        // CIGAR: 56M1D35M
+        let rec = make_record(
+            108_996,
+            vec![
+                Cigar::Match(56),
+                Cigar::Del(1),
+                Cigar::Match(35),
+            ],
+        );
+
+        let blocks = record_to_blocks(&rec);
+
+        // Deletion creates a gap in coverage
+        assert_eq!(blocks.len(), 2);
+
+        assert_eq!(blocks[0].start, 108_996);
+        assert_eq!(blocks[0].end,   109_052);
+
+        assert_eq!(blocks[1].start, 109_053);
+        assert_eq!(blocks[1].end,   109_088);
+    }
+    #[test]
+    fn test_split_blocks_across_splice() {
+        // CIGAR: 50M1000N50M
+        // Expected: two blocks
+        let rec = make_record(
+            1_000,
+            vec![
+                Cigar::Match(50),
+                Cigar::RefSkip(1000),
+                Cigar::Match(50),
+            ],
+        );
+
+        let blocks = record_to_blocks(&rec);
+
+        assert_eq!(blocks.len(), 2, "Splice should split blocks");
+
+        assert_eq!(blocks[0].start, 1_000);
+        assert_eq!(blocks[0].end, 1_050);
+
+        assert_eq!(blocks[1].start, 2_050);
+        assert_eq!(blocks[1].end, 2_100);
     }
 }
 

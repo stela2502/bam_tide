@@ -1,3 +1,28 @@
+use std::fmt::{Display, Formatter, Result};
+
+
+#[derive(Debug, Clone, Default)]
+pub struct MaxDiffBin {
+    pub chr: String,
+    pub start: u64,
+    pub end: u64,
+    pub x: f64,
+    pub y: f64,
+    pub abs_diff: f64,
+}
+
+
+impl Display for MaxDiffBin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "chr:start-end\tpython\trust\tabs_diff\n{}:{}-{}\t{:.6}\t{:.6}\t{:.6}",
+            self.chr, self.start, self.end, self.x, self.y, self.abs_diff
+        )
+    }
+}
+
+
 #[derive(Debug, Default, Clone)]
 pub struct CompareReport {
     /// Total number of bins compared
@@ -21,21 +46,38 @@ pub struct CompareReport {
     sum_x2: f64,
     sum_y2: f64,
     sum_xy: f64,
-}
+
+    // NEW:
+    pub max_bin: Option<MaxDiffBin>,
+}    
+
+
 
 impl CompareReport {
     /// Update this report from two equal-length bin vectors.
-    pub fn update_from_bins(&mut self, x: &[f64], y: &[f64], eps: f64) {
+    pub fn update_from_bins(
+        &mut self,
+        chr: &str,
+        chr_len: u64,
+        bin_width: u64,
+        x: &[f64],
+        y: &[f64],
+        eps: f64,
+    ) {
         debug_assert_eq!(x.len(), y.len(), "bin vectors must have equal length");
 
-        for (&xi, &yi) in x.iter().zip(y.iter()) {
-            self.update_one(xi, yi, eps);
+        for (i, (&xi, &yi)) in x.iter().zip(y.iter()).enumerate() {
+            let start = (i as u64) * bin_width;
+            if start >= chr_len { break; }
+            let end = (start + bin_width).min(chr_len);
+
+            self.update_one(chr, start, end, xi, yi, eps);
         }
     }
 
     /// Update this report with a single pair of values.
     #[inline]
-    pub fn update_one(&mut self, x: f64, y: f64, eps: f64) {
+    pub fn update_one(&mut self, chr: &str, start: u64, end: u64, x: f64, y: f64, eps: f64) {
         let d = x - y;
         let ad = d.abs();
 
@@ -47,12 +89,19 @@ impl CompareReport {
 
         if ad > self.max_abs {
             self.max_abs = ad;
+            self.max_bin = Some(MaxDiffBin {
+                chr: chr.to_string(),
+                start,
+                end,
+                x,
+                y,
+                abs_diff: ad,
+            });
         }
 
         self.sum_abs += ad;
         self.sum_sq += d * d;
 
-        // Pearson accumulators
         self.sum_x += x;
         self.sum_y += y;
         self.sum_x2 += x * x;
@@ -73,6 +122,19 @@ impl CompareReport {
         self.sum_x2 += other.sum_x2;
         self.sum_y2 += other.sum_y2;
         self.sum_xy += other.sum_xy;
+
+        self.max_bin = match (self.max_bin.take(), other.max_bin.clone()) {
+            (None, None) => None,
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (Some(a), Some(b)) => {
+                if a.abs_diff >= b.abs_diff {
+                    Some(a)
+                } else {
+                    Some(b)
+                }
+            }
+        };
     }
 
     /// Finalize metrics:
