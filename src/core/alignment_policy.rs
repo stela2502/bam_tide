@@ -3,13 +3,17 @@ use crate::cli::CoverageCli;
 
 
 /// SAM flag bits (u16) and nice to have
+#[allow(unused)]
 const FLAG_PAIRED: u16        = 0x1;
+#[allow(unused)]
 const FLAG_UNMAPPED: u16      = 0x4;
 const FLAG_SECONDARY: u16     = 0x100;
+#[allow(unused)]
 const FLAG_QCFAIL: u16        = 0x200;
 const FLAG_DUPLICATE: u16     = 0x400;
 const FLAG_SUPPLEMENTARY: u16 = 0x800;
 const FLAG_READ1: u16         = 0x40;
+#[allow(unused)]
 const FLAG_READ2: u16         = 0x80; // "second in pair"
 
 

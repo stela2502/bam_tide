@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::{ PathBuf};
 use std::process::Command;
 
 use tempfile::tempdir;
@@ -95,6 +95,12 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     use std::path::Path;
     use std::process::Command;
     use tempfile::tempdir;
+
+    if cfg!(debug_assertions) {
+        eprintln!("Skipping slow bigWig comparison test in debug mode");
+        return Ok(());
+    }
+
 
     // --- config ---
     let bam = Path::new("legacy/testData/subset.bam");

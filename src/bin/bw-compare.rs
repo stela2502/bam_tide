@@ -130,7 +130,7 @@ fn main() -> Result<()> {
         // NEW finish()
         let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = chr_rep.finish();
 
-        writeln!(out, "{}",format!(
+        let _ = writeln!(out, "{}",format!(
             "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
             chr,
             n_over_eps,
@@ -145,7 +145,7 @@ fn main() -> Result<()> {
         total.merge(&chr_rep);
     }
     let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = total.finish();
-    writeln!(out, "{}",format!(
+    let _ = writeln!(out, "{}",format!(
             "TOTAL\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
             n_over_eps,
             frac_n_over_eps,

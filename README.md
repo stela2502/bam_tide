@@ -1,3 +1,5 @@
+[![Rust](https://github.com/stela2502/bam_tide/actions/workflows/rust.yml/badge.svg)](https://github.com/stela2502/bam_tide/actions/workflows/rust.yml)
+
 # bam_tide
 
 Fast, reproducible BAM → binned coverage exporters and validation utilities written in Rust.

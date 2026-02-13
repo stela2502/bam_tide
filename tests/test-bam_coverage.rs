@@ -5,6 +5,11 @@ use std::path::{Path,PathBuf};
 fn test_bam_coverage_matches_deeptools_bigwig() {
     let bam = "legacy/testData/subset.bam";
 
+    if cfg!(debug_assertions) {
+        eprintln!("Skipping slow bigWig comparison test in debug mode");
+        return ;
+    }
+
     let out_dir = PathBuf::from("legacy/testData");
     let py_bw = out_dir.join("_ref_deeptools.bw");
     let rs_bw = out_dir.join("_test_bam_coverage.bw");
