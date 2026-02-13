@@ -72,8 +72,7 @@ This indicates:
   * Rust: ~227–232 MB
 * Rust uses slightly more RAM here, likely due to:
 
-  * Preallocated coverage buffers
-  * Different internal bin storage strategy
+  * Not depending on sorted bam files - collecting all data into memory
 
 **Accuracy**
 
