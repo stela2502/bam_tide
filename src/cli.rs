@@ -22,6 +22,7 @@ pub struct CoverageCli {
     #[arg(short = 'o', long)]
     pub outfile: String,
 
+    /*
     /// tag name for the CELL information (default CB for velocity default - change to CR for CellRanger)
     #[arg(short = 'c', long, default_value = "CB")]
     pub cell_tag: String,
@@ -33,6 +34,7 @@ pub struct CoverageCli {
     /// Collect single cell info or bulk
     #[arg(short = 'a', long, value_enum, default_value_t = AnalysisType::Bulk)]
     pub analysis_type: AnalysisType,
+    */
 
     /// Normalize the data somehow
     #[arg(short = 'n', long, value_enum, default_value_t = Normalize::Not)]
@@ -51,15 +53,15 @@ pub struct CoverageCli {
     pub min_mapping_quality: u8,
 
     /// Include secondary alignments
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     pub include_secondary: bool,
 
     /// Include supplementary alignments
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     pub include_supplementary: bool,
 
     /// Include duplicate-marked reads
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     pub include_duplicates: bool,
 
     /// Exclude reads with ANY of these SAM flag bits set

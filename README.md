@@ -1,32 +1,23 @@
 # bam_tide
 
-Fast, memory-efficient BAM coverage calculation in Rust.
+Fast, reproducible BAM → binned coverage exporters and validation utilities written in Rust.
 
-`bam_tide` provides a modern, CIGAR-aware implementation of genome coverage binning and exports results as **bedGraph** or **bigWig**.  
-It is designed as a high-performance alternative to tools like **deepTools `bamCoverage`**, with explicit and reproducible coverage semantics.
+This repository currently ships two main command-line tools:
 
----
+- **`bam-coverage`** — compute binned coverage from a position-sorted BAM and write **bedGraph** or **BigWig** (depending on the build/features of your binary).
+- **`bw-compare`** — validate Rust-generated BigWigs against a reference (typically **deeptools `bamCoverage`**) and report per-chromosome and global statistics, including a final **`TOTAL`** line.
 
-## ✨ Features
-
-- 🚀 **Very fast** BAM → bedGraph / bigWig conversion
-- 🧬 **CIGAR-correct** reference coverage (M/= /X only)
-- 📦 Low memory footprint
-- 📏 Fixed-width genomic binning
-- 🔬 Numerically comparable to `deepTools bamCoverage`
-- 🧪 Built-in benchmarking and regression tests
+> Goal: provide **bamCoverage-compatible filtering semantics** (include/exclude SAM flags, MAPQ, duplicates, secondary/supplementary) with **much higher performance** and simple, scriptable reproducibility.
 
 ---
 
-## 📦 Installation
+## Installation
 
-### From source (recommended)
+### Option 1: Build from source (recommended)
 
-Requires:
-- Rust ≥ 1.70
-- `cargo`
-- `samtools` (for test data / benchmarking)
-- `deepTools` (optional, for benchmarking comparison)
+Prerequisites:
+- Rust toolchain (stable) via `rustup`
+- A C toolchain (for some dependencies) as needed on your system
 
 ```bash
 git clone https://github.com/stela2502/bam_tide.git
@@ -34,196 +25,279 @@ cd bam_tide
 cargo build --release
 ```
 
-Binary will be at:
+Binaries will be available here:
 
 ```bash
 ./target/release/bam-coverage
+./target/release/bw-compare
 ```
+
+### Option 2: Use inside a container (optional)
+
+If you run on HPC and prefer containers, you can build an Apptainer/Singularity image around a release build of these binaries. (A recipe is not included yet—see **Future developments**.)
 
 ---
 
-## ▶️ Usage
+## Quickstart
 
-### Basic usage
+### 1) Generate coverage with `bam-coverage`
+
+**Minimal example:**
 
 ```bash
-bam-coverage \
-  -b input.bam \
-  -o output.bedgraph \
-  -w 50
+./target/release/bam-coverage \
+  --bam input.sorted.bam \
+  --outfile sample.bw
 ```
 
-Arguments:
+**Common options:**
+- `--width 50` to change bin size (default: 50)
+- `--min-mapping-quality 30` to require MAPQ ≥ 30
+- `--sam-flag-exclude 256` to exclude secondary alignments (deeptools-compatible)
+- `--sam-flag-include 64` to include only Read1
 
-| Option | Description |
-|--------|-------------|
-| `-b, --bam` | Input BAM file (sorted by coordinate) |
-| `-o, --outfile` | Output bedGraph or bigWig |
-| `-w, --width` | Bin width (default: 50 bp) |
-| `-n, --normalize` | Normalization mode (`not`, `cpm`, `rpkm`, `bpm`) |
-| `--min-mapping-quality` | Filter reads by MAPQ |
-| `--include-secondary` | Include secondary alignments |
-| `--include-supplementary` | Include supplementary alignments |
-| `--include-duplicates` | Include duplicate-marked reads |
-
----
-
-## 🧮 Coverage semantics
-
-`bam_tide` computes **binwise coverage as the number of alignment blocks overlapping each bin**:
-
-- CIGAR operations counted: `M`, `=`, `X`
-- CIGAR operations ignored: `I`, `S`, `H`, `P`
-- Reference skips (`N`) and deletions (`D`) advance reference position but do not contribute coverage
-- Each block contributes **+1** to every bin it overlaps
-
-This matches the effective behavior of `deepTools bamCoverage` when run without smoothing, normalization, or fragment extension.
-
----
-
-## 🧪 Benchmark vs deepTools
-
-Benchmark command:
+Example (exclude secondary + supplementary alignments):
 
 ```bash
-bash legacy/benchmark.sh legacy/testData/subset.bam bench_out
+./target/release/bam-coverage \
+  --bam input.sorted.bam \
+  --outfile sample.bw \
+  --sam-flag-exclude 2304 \
+  --width 50
 ```
 
-Results:
+> `--sam-flag-exclude` is a **bitmask**: any read with `(flag & mask) != 0` is discarded.
 
-```
-Rust:
-Elapsed: 0.23 s
-RSS:     5.5 MB
+---
 
-deepTools:
-Elapsed: 38.53 s
-RSS:     73 MB
-```
+### 2) Validate results with `bw-compare`
 
-### Numeric comparison
+Compare a Python (deeptools) BigWig to a Rust BigWig:
 
 ```bash
-python3 legacy/compare_bedgraph_bins.py bench_out/rust.bedgraph bench_out/python.bedgraph 50
+./target/release/bw-compare \
+  --python-bw python_sample.bw \
+  --rust-bw rust_sample.bw
 ```
 
-Output:
+This prints a per-chromosome report and finishes with a **`TOTAL`** line that summarizes all chromosomes.
 
-```
-== bedGraph binwise comparison ==
-bin_width       50
-total_bins      54564613
-bins_with_signal 854
-bad_bins        39
-mean_abs        5.57e-06
-corr            1.0
-```
-
-This shows:
-- Perfect correlation with deepTools output
-- Only 39 bins differ slightly out of >54 million
-- Numerical differences are negligible
-
----
-
-## 🏃 Running your own benchmark
-
-Requirements:
-- `deepTools` installed (`bamCoverage`)
-- `/usr/bin/time`
+**Write the report to a file:**
 
 ```bash
-bash legacy/benchmark.sh your_data.bam my_benchmark 50 4
-python3 legacy/bench_table.py my_benchmark
+./target/release/bw-compare \
+  --python-bw python_sample.bw \
+  --rust-bw rust_sample.bw \
+  --outfile compare_report.txt
 ```
 
-Compare outputs:
+See the full benchmark results here:
+
+[Benchmark results](Benchmark.md)
+
+---
+
+## Command reference
+
+### `bam-coverage --help`
+
+Shared CLI options for coverage exporters (bedGraph / bigWig)
+
+```
+Usage: bam-coverage [OPTIONS] --bam <BAM> --outfile <OUTFILE>
+
+Options:
+  -b, --bam <BAM>
+          Input BAM file (sorted by chromosome position)
+
+  -o, --outfile <OUTFILE>
+          Output file (bedGraph or BigWig depending on binary)
+
+  -n, --normalize <NORMALIZE>
+          Normalize the data somehow
+
+          [default: not]
+          [possible values: not, rpkm, cpm, bpm, rpgc]
+
+  -w, --width <WIDTH>
+          Bin width for coverage calculation
+
+          [default: 50]
+
+      --only-r1
+          Collect only R1 areas
+
+      --min-mapping-quality <MIN_MAPPING_QUALITY>
+          Minimum mapping quality to include a read
+
+          [default: 0]
+
+      --include-secondary
+          Include secondary alignments
+
+      --include-supplementary
+          Include supplementary alignments
+
+      --include-duplicates
+          Include duplicate-marked reads
+
+      --sam-flag-exclude <SAM_FLAG_EXCLUDE>
+          Exclude reads with ANY of these SAM flag bits set (equivalent to deeptools --samFlagExclude).
+
+          The value is a bitmask of SAM flags. Any read with (read_flag & mask) != 0 will be discarded.
+
+          Examples:
+            256  -> exclude secondary alignments
+            512  -> exclude QC-failed reads
+            1024 -> exclude PCR/optical duplicates
+            2048 -> exclude supplementary alignments
+            2816 -> exclude secondary + QC-fail + supplementary
+
+          Default: None (no flag-based exclusion, matches bamCoverage defaults)
+
+      --sam-flag-include <SAM_FLAG_INCLUDE>
+          Include only reads that have ALL of these SAM flag bits set. Applied after the exclusion test (equivalent to deeptools --samFlagInclude).
+
+          The value is a bitmask of SAM flags. A read is kept only if: (read_flag & mask) == mask
+
+          Examples:
+            64  -> include only read1
+            128 -> include only read2
+            2   -> include only properly paired reads
+
+          Default: None (no include constraint, matches bamCoverage defaults)
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+---
+
+### `bw-compare --help`
+
+Compare two BigWig files (typically python bamCoverage vs. rust bam-coverage) and report per-chromosome and global differences.
+
+The tool bins both BigWigs with the same bin width and compares the values position by position. It reports several statistics describing how different the signals are.
+
+Output columns:
+- `n_over_eps`       Number of bins where `|python - rust| > eps`
+- `frac_n_over_eps`  Fraction of bins over eps
+- `mean_abs`         Mean absolute difference
+- `var_abs`          Variance of absolute differences
+- `rmse`             Root mean squared error
+- `max_abs`          Maximum absolute difference
+- `pearson_rho`      Pearson correlation between tracks
+
+A final **TOTAL** line summarizes all chromosomes.
+
+If `--outfile` is not given, a report file will be created automatically:
+`bw_compare_<rust_basename>_w<bin_width>.txt`
+
+```
+Usage: bw-compare [OPTIONS] --python-bw <FILE> --rust-bw <FILE>
+
+Options:
+      --python-bw <FILE>
+          Python-generated BigWig (reference)
+
+      --rust-bw <FILE>
+          Rust-generated BigWig (to be validated)
+
+      --bin-width <INT>
+          Bin width used during coverage generation (must match both files)
+
+          [default: 50]
+
+      --eps <FLOAT>
+          Epsilon threshold for counting a bin as different (|python - rust| > eps)
+
+          [default: 0.00001]
+
+      --outfile <FILE>
+          Optional output file for the comparison report.
+
+          If not provided, the report is written to:
+          bw_compare_<rust_basename>_w<bin_width>.txt
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
+
+---
+
+## Reproducibility notes
+
+To get reproducible and comparable coverage tracks:
+
+1. **Use a position-sorted BAM**
+   - `bam-coverage` expects the BAM to be sorted by chromosome position.
+2. **Match bin width**
+   - `bam-coverage --width` and `bw-compare --bin-width` must match (and must also match your `bamCoverage --binSize` if you compare to deeptools).
+3. **Match filtering semantics**
+   - MAPQ threshold: `--min-mapping-quality`
+   - Include/exclude: `--sam-flag-exclude` / `--sam-flag-include`
+   - Secondary/supplementary/duplicates: `--include-secondary`, `--include-supplementary`, `--include-duplicates`
+4. **Normalization**
+   - Ensure both tools use the same normalization scheme (e.g. CPM/RPKM/BPM/RPGC) and genome size settings (where applicable).
+5. **Floating point**
+   - Minor floating point differences can occur; use `bw-compare --eps` to set a meaningful tolerance and rely on correlation (`pearson_rho`) plus RMSE/mean absolute difference for validation.
+
+### Example validation workflow
 
 ```bash
-python3 legacy/compare_bedgraph_bins.py \
-  my_benchmark/rust.bedgraph \
-  my_benchmark/python.bedgraph \
-  50
+# Python reference (deeptools)
+bamCoverage input.sorted.bam --samFlagExclude 256 --binSize 50 -o python_input_flag256.bw
+
+# Rust candidate
+./target/release/bam-coverage -b input.sorted.bam --sam-flag-exclude 256 --width 50 -o rust_input_flag256.bw
+
+# Compare
+./target/release/bw-compare --python-bw python_input_flag256.bw --rust-bw rust_input_flag256.bw --bin-width 50
 ```
 
 ---
 
-## 🧪 Testing
+## Benchmarks (example)
 
-Run unit and integration tests:
-
-```bash
-cargo test
-```
-
-This includes:
-- CIGAR → block conversion tests
-- binning logic tests
-- regression tests for bedGraph and bigWig output
+In a small validation experiment across multiple SAM flag exclusion masks, the Rust implementation produced numerically indistinguishable results (Pearson r ≈ 1.0) while being **~10× faster** and using **~10× less peak memory** than deeptools `bamCoverage` (exact numbers depend on dataset, IO, and chosen flags).
 
 ---
 
-## 📊 Output formats
+## Future developments
 
-Supported outputs:
-- `bedGraph`
-- `bigWig`
+Planned improvements to increase parity with deeptools `bamCoverage` and to improve reproducibility/UX:
 
-Format is inferred from output filename extension.
+- **Feature parity** (selected examples)
+  - more read extension / fragment handling options (paired-end fragment coverage semantics)
+  - region-restricted output (chromosome/interval subsets)
+  - smoothing / rolling aggregation options
+  - advanced normalization configurations (explicit effective genome size, RPGC parameters)
+  - blacklist / region exclusion
+- **Better packaging**
+  - published releases with prebuilt binaries for common Linux targets
+  - container recipes for Apptainer/Singularity and Docker
+- **Performance and QA**
+  - expanded test suite (known-answer tests and randomized property tests)
+  - continuous benchmarking and regression checks
+  - improved bw-compare reporting (optional CSV/TSV output, plots)
 
----
-
-## 🧠 Design
-
-Pipeline:
-
-```
-BAM → AlignmentPolicy filter
-    → record_to_blocks()  (CIGAR → RefBlock[])
-    → BedData::add_ref_blocks()
-    → DataIter
-    → bedGraph / bigWig
-```
-
-Core structure:
-
-```rust
-struct RefBlock {
-    start: u32,
-    end: u32,   // half-open [start, end)
-}
-```
-
-Bins accumulate **per-block** overlap (not per-base).
+If you rely on a particular `bamCoverage` option that is currently missing, please open an issue describing:
+- the exact deeptools CLI you use
+- a small test BAM (or synthetic minimal example)
+- the expected behavior
 
 ---
 
-## 📜 License
+## License
 
-MIT License.
-
----
-
-## 👤 Author
-
-Stefan Lang  
-Division of Molecular Hematology  
-Lund University  
+See `LICENSE` in this repository.
 
 ---
 
-## 🧬 Citation
+## Acknowledgements
 
-If you use this tool in a paper, please cite the repository:
-
-```
-https://github.com/stela2502/bam_tide
-```
-
-(Manuscript forthcoming.)
-
----
-
-## 💬 Why “bam_tide”?
-
-Because it’s fast, memory-efficient, and turns BAMs into coverage tracks in one clean sweep 🌊
+- Inspired by the deeptools `bamCoverage` interface and semantics.
+- Uses the Rust ecosystem for HTS parsing and BigWig writing (see `Cargo.toml` for dependencies).

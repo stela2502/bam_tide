@@ -80,7 +80,7 @@ fn main() -> Result<()> {
         Box::new(BufWriter::new(File::create(p)?))
     } else {
         // fallback: write nowhere
-        Box::new(std::io::sink())
+        Box::new(std::io::stdout())
     };
 
     // Read chrom lists
@@ -153,7 +153,7 @@ fn main() -> Result<()> {
             var_abs,
             rmse,
             max_abs,
-            chr_rep.pearson()
+            total.pearson()
         ));
     Ok(())
 }
