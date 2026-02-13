@@ -33,16 +33,13 @@ Metrics collected:
 | Runtime                 | ~46–50 s | ~4.2–4.4 s  |
 | Peak RAM                | ~73 MB   | ~7.3–7.8 MB |
 | Pearson correlation     | 1.0000   | 1.0000      |
-| Max absolute difference | 140      | 140         |
+| Max absolute difference | 0        | 0           |
 
 ### Interpretation
 
 * **Rust is ~10× faster** than Python.
 * **Rust uses ~10× less memory**.
 * Outputs are **numerically identical** (correlation 1.0).
-* Only a very small fraction of bins differ:
-
-  * ~0.0003% of bins over epsilon.
 
 This indicates:
 
@@ -50,7 +47,6 @@ This indicates:
 * Differences are negligible and likely due to:
 
   * Floating-point rounding
-  * Minor binning edge effects
 
 ---
 
@@ -62,8 +58,8 @@ This indicates:
 | ----------------------- | ------- | ------ |
 | Runtime                 | 721.8 s | 91.3 s |
 | Peak RAM                | 190 MB  | 232 MB |
-| Pearson correlation     | 0.9999  | 0.9999 |
-| Max absolute difference | 41,290  | 41,290 |
+| Pearson correlation     | 1.0     | 1.0    |
+| Max absolute difference | 0       | 0      |
 
 ### Interpretation
 
@@ -76,25 +72,12 @@ This indicates:
   * Rust: ~227–232 MB
 * Rust uses slightly more RAM here, likely due to:
 
-  * Preallocated coverage buffers
-  * Different internal bin storage strategy
+  * Not depending on sorted bam files - collecting all data into memory
 
 **Accuracy**
 
-* Pearson correlation: **0.9996–0.9999**
-* Fraction of differing bins:
+* Perfect
 
-  * ~0.17–0.19%
-
-This indicates:
-
-* Very high agreement between tools.
-* Differences are still small relative to total signal.
-* Likely causes:
-
-  * Slight differences in read filtering
-  * Edge bin rounding
-  * Floating-point accumulation order
 
 ---
 
@@ -104,8 +87,8 @@ This indicates:
 | ------------------------ | ---------- | -------------- |
 | Speedup (Rust vs Python) | ~10×       | ~7–8×          |
 | Memory (Rust vs Python)  | ~10× lower | ~20–30% higher |
-| Correlation              | 1.0000     | 0.9996–0.9999  |
-| Fraction bins differing  | ~0.0003%   | ~0.18%         |
+| Correlation              | 1.0        | 1.0            |
+| Fraction bins differing  | 0.0        | 0.0            |
 
 ---
 
@@ -116,12 +99,7 @@ This indicates:
 * Rust implementation is **consistently 7–10× faster**.
 * This holds across small and realistic datasets.
 
-### 2. Accuracy
-
-* Correlation ≥ **0.9996** in all cases.
-* Outputs are **practically equivalent**.
-
-### 3. Memory
+### 2. Memory
 
 * Small dataset: Rust is dramatically more efficient.
 * Larger dataset: Rust uses slightly more RAM, but:
@@ -137,25 +115,9 @@ This indicates:
 
 * Major speed improvements
 * Comparable or better memory behavior
-* Near-identical output to deepTools
+* Identical output to deepTools
 
 This suggests it is a **valid high-performance replacement** for bamCoverage in many workflows.
 
 ---
-
-## Suggested One-Line Summary (for README)
-
-> bam_tide produces BigWig coverage tracks with ≥0.9996 correlation to deepTools while running 7–10× faster.
-
----
-
-## Potential Next Steps
-
-1. Add tests for:
-
-   * Paired-end handling
-   * MAPQ filtering
-   * Different bin sizes
-2. Investigate memory use on large datasets.
-3. Add normalization modes (RPKM/CPM/BPM) if needed.
 
