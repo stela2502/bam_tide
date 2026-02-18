@@ -61,8 +61,7 @@ struct Args {
 
     /// Optional output file for the comparison report.
     ///
-    /// If not provided, the report is written to:
-    ///   bw_compare_<rust_basename>_w<bin_width>.txt
+    /// If not provided, the report is written to STDOUT
     #[arg(long, short, value_name = "FILE")]
     outfile: Option<PathBuf>,
 }
