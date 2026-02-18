@@ -11,7 +11,9 @@ use bigtools::beddata::BedParserStreamingIterator;
 use rayon::prelude::*;
 
 use crate::data_iter::DataIter;
-use crate::core::ref_block::{record_to_blocks, RefBlock}; // your new CIGAR-derived blocks
+use gtf_splice_index::types::RefBlock; // your new CIGAR-derived blocks
+use crate::core::ref_block::record_to_blocks;
+
 use crate::core::alignment_policy::AlignmentPolicy;
 use crate::cli::CoverageCli;
 
@@ -362,7 +364,7 @@ impl BedData {
 #[cfg(test)]
 mod binning_tests {
     use super::*;
-    use crate::core::ref_block::RefBlock; // adjust path to where RefBlock lives
+    use gtf_splice_index::types::RefBlock; // adjust path to where RefBlock lives
 
     const EPS: f32 = 1e-6;
 

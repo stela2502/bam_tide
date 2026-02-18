@@ -3,20 +3,7 @@
 use rust_htslib::bam::Record;
 use rust_htslib::bam::record::Cigar;
 
-/// A contiguous reference interval covered by an alignment.
-/// Coordinates are 0-based, half-open: [start, end).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RefBlock {
-    pub start: u32,
-    pub end: u32,
-}
-
-impl RefBlock {
-    /// Create a new block, assuming start < end.
-    pub fn new(start: u32, end: u32) -> Self {
-        Self { start, end }
-    }
-}
+use gtf_splice_index::RefBlock;
 
 /// Convert a BAM record into reference-covered blocks using its CIGAR string.
 ///

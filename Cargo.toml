@@ -11,3 +11,8 @@ rayon = "1.11.0"
 rust-htslib = "1.0.0"
 tempfile = "3.24.0"
 tokio = "1.49.0"
+
+scdata = { path = "../scdata" }
+gtf_splice_index = { path = "../gtf_splice_index" }
+mapping_info = { git="https://github.com/stela2502/mapping_info.git" }
+int_to_str = { path = "../int_to_str"}
