@@ -31,7 +31,6 @@ pub struct CompareReport {
     /// Number of bins where |x - y| > eps
     pub n_over_eps: usize,
 
-    /// Maximum absolute difference observed
     pub max_abs: f64,
 
     /// Sum of absolute differences

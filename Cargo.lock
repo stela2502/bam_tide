@@ -220,9 +220,9 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "bumpalo"
-version = "3.19.1"
+version = "3.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
+checksum = "5c6f81257d10a0f602a294ae4182251151ff97dbb504ef9afcdda4a64b24d9b4"
 
 [[package]]
 name = "byteorder"
@@ -1099,7 +1099,7 @@ dependencies = [
 [[package]]
 name = "mapping_info"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/mapping_info.git#08ba4c9c1166b83f8e7c78a0ff3fc736466d4ba5"
+source = "git+https://github.com/stela2502/mapping_info.git#66d2f7e87f2d7b9323224e5c6cc3f0c109205907"
 dependencies = [
  "atty",
  "chrono",

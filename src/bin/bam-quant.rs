@@ -32,27 +32,23 @@ use mapping_info::MappingInfo;
 
 use int_to_str::int_to_str::IntToStr;
 
-const CHUNK: usize = 2_000_000; 
+const CHUNK: usize = 2_000_000;
 
 // ---- Your splice index / transcript-matching crate ----
 // Adjust these paths to your actual crate/module names.
-use gtf_splice_index::{
-    MatchClass,
-    MatchOptions,
-    SpliceIndex,
-    SplicedRead,
-    Strand,
-    TranscriptId,
-};
 use gtf_splice_index::model::MatchHit;
 use gtf_splice_index::types::RefBlock;
+use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Strand, TranscriptId};
 
 // ---- Your ref-block conversion ----
 // Adjust these paths to where RefBlock + record_to_blocks live in bam_tide.
-use bam_tide::core::ref_block::{record_to_blocks};
+use bam_tide::core::ref_block::record_to_blocks;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "bam-quant", about = "Quantify 10x BAM against splice index into scdata")]
+#[command(
+    name = "bam-quant",
+    about = "Quantify 10x BAM against splice index into scdata"
+)]
 pub struct QuantCli {
     /// Input BAM (10x / CellRanger BAM)
     #[arg(long, short)]
@@ -89,7 +85,6 @@ pub struct QuantCli {
     // ------------------------------
     // MatchOptions exposed to user
     // ------------------------------
-
     /// If true, require read blocks to be on a compatible strand.
     #[arg(long, default_value_t = false)]
     pub require_strand: bool,
@@ -139,10 +134,7 @@ fn normalize_10x_barcode(cb: &str) -> &str {
 
 /// Convert a DNA string (ACGT only) into a packed u64 via 2-bit encoding.
 fn dna_to_u64(seq: &str) -> Option<u64> {
-    if !seq
-        .bytes()
-        .all(|b| matches!(b, b'A' | b'C' | b'G' | b'T'))
-    {
+    if !seq.bytes().all(|b| matches!(b, b'A' | b'C' | b'G' | b'T')) {
         return None;
     }
     let tool = IntToStr::new(seq.as_bytes());
@@ -163,7 +155,7 @@ fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u
     };
 
     let mut spliced = SplicedRead::new(chr_id, strand, blocks);
-    let (start0, end0 ) =  spliced.finalize();
+    let (start0, end0) = spliced.finalize();
     Some((spliced, start0, end0))
 }
 
@@ -184,7 +176,8 @@ fn pick_best_transcript(
         let tr = &idx.transcripts[tid];
         let hit = tr.match_spliced_read(read, opts);
 
-        if hit.class.rank() < 2 { //
+        if hit.class.rank() < 2 {
+            //
             continue;
         }
 
@@ -226,7 +219,6 @@ fn build_chr_map(idx: &SpliceIndex) -> std::collections::HashMap<String, usize> 
     map
 }
 
-
 fn main() -> Result<()> {
     let args = QuantCli::parse();
 
@@ -243,7 +235,6 @@ fn main() -> Result<()> {
 
     //let chr_map = build_chr_map(&idx);
     let chr_map = build_chr_map_fuzzy(&idx);
-
 
     let match_opts = MatchOptions {
         require_strand: args.require_strand,
@@ -278,9 +269,11 @@ fn main() -> Result<()> {
     for r in reader.records() {
         #[cfg(debug_assertions)]
         {
-            i +=1;
-            if i - n_seen > 1_000_0000{
-                panic!("We have found more than 1 mio reads that did not pass initial filters.\n read {i}, processed {n_seen},  Wrong gene model?\n{merged_report}");
+            i += 1;
+            if i - n_seen > 1_000_0000 {
+                panic!(
+                    "We have found more than 1 mio reads that did not pass initial filters.\n read {i}, processed {n_seen},  Wrong gene model?\n{merged_report}"
+                );
             }
         }
         let rec = r.context("BAM read error")?;
@@ -306,15 +299,15 @@ fn main() -> Result<()> {
             Some(v) => v,
             None => {
                 merged_report.report("no CB tag");
-                continue
-            },
+                continue;
+            }
         };
         let ub = match aux_tag_str(&rec, *b"UB") {
             Some(v) => v,
             None => {
                 merged_report.report("no UB tag");
-                continue
-            },
+                continue;
+            }
         };
 
         let cb = normalize_10x_barcode(cb_raw);
@@ -340,8 +333,8 @@ fn main() -> Result<()> {
             Some(&id) => id,
             None => {
                 merged_report.report("contig not in index");
-                continue // contig not in splice index
-            },
+                continue; // contig not in splice index
+            }
         };
 
         let (spliced, start0, end0) = match record_to_spliced_read(&rec, chr_id) {
@@ -367,7 +360,15 @@ fn main() -> Result<()> {
 
         if jobs.len() >= CHUNK {
             println!("Processing chunk of size {}", CHUNK);
-            process_chunk(&jobs, &idx, match_opts, &mut merged, &mut merged_intron, &mut merged_report, args.min_mapq)?;
+            process_chunk(
+                &jobs,
+                &idx,
+                match_opts,
+                &mut merged,
+                &mut merged_intron,
+                &mut merged_report,
+                args.min_mapq,
+            )?;
             jobs.clear();
         }
     }
@@ -378,15 +379,27 @@ fn main() -> Result<()> {
 
     if jobs.len() > 0 {
         println!("Processing final chunk of size {}", jobs.len());
-        process_chunk(&jobs, &idx, match_opts, &mut merged, &mut merged_intron, &mut merged_report, args.min_mapq)?;
+        process_chunk(
+            &jobs,
+            &idx,
+            match_opts,
+            &mut merged,
+            &mut merged_intron,
+            &mut merged_report,
+            args.min_mapq,
+        )?;
         jobs.clear();
     }
 
     println!("Writing outfiles");
     // TODO: persist merged scdata to disk in your preferred format.
-    let genes= IndexedGenes::from_names( &idx.chr_names );
-    let _= merged.write_sparse( &args.outpath, &genes, args.min_cell_counts);
-    let _= merged_intron.write_sparse( &add_suffix( &args.outpath, "_intronic" ), &genes, args.min_cell_counts);
+    let genes = IndexedGenes::from_names(&idx.chr_names);
+    let _ = merged.write_sparse(&args.outpath, &genes, args.min_cell_counts);
+    let _ = merged_intron.write_sparse(
+        &add_suffix(&args.outpath, "_intronic"),
+        &genes,
+        args.min_cell_counts,
+    );
     println!("{merged_report}");
 
     Ok(())
@@ -404,7 +417,6 @@ fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
 
     parent.join(new_name)
 }
-
 
 fn process_chunk(
     jobs: &[Job],
@@ -427,29 +439,30 @@ fn process_chunk(
 
             for job in chunk {
                 let cands = idx.candidates_for_span_union(job.chr_id, job.start0, job.end0);
-                if cands.is_empty() { 
+                if cands.is_empty() {
                     rep.report("no match");
-                    continue; 
+                    continue;
                 }
 
                 let best = pick_best_transcript(idx, &cands, &job.spliced, match_opts);
-                let (tid, hit) = match best { 
-                    Some(v) => v, 
+                let (tid, hit) = match best {
+                    Some(v) => v,
                     None => {
-                        rep.report( "no hit" );
-                        continue
-                    },
+                        rep.report("no hit");
+                        continue;
+                    }
                 };
 
-                rep.report( hit.class.as_str() );
+                rep.report(hit.class.to_string());
                 let gene_id = idx.transcripts[tid].gene_id;
+                rep.report(gene_id.to_string());
+                println!("Found gene_id {gene_id}");
 
-                if hit.class == MatchClass::Intronic{
+                if hit.class == MatchClass::Intronic {
                     sc_intron.try_insert(&job.cell, GeneUmiHash(gene_id, job.umi), 1.0, &mut rep);
-                }else {
+                } else {
                     sc.try_insert(&job.cell, GeneUmiHash(gene_id, job.umi), 1.0, &mut rep);
                 }
-                
             }
 
             (sc, sc_intron, rep)
@@ -458,13 +471,12 @@ fn process_chunk(
 
     for (sc, sc_intron, rep) in partials {
         merged.merge(&sc);
-        merged_intron.merge( &sc_intron );
+        merged_intron.merge(&sc_intron);
         merged_report.merge(&rep);
     }
 
     Ok(())
 }
-
 
 fn build_chr_map_fuzzy(idx: &SpliceIndex) -> std::collections::HashMap<String, usize> {
     let mut map = std::collections::HashMap::new();
@@ -478,7 +490,11 @@ fn build_chr_map_fuzzy(idx: &SpliceIndex) -> std::collections::HashMap<String, u
         map.entry(no_chr).or_insert(i);
 
         // with chr prefix
-        let with_chr = if n.starts_with("chr") { n.clone() } else { format!("chr{n}") };
+        let with_chr = if n.starts_with("chr") {
+            n.clone()
+        } else {
+            format!("chr{n}")
+        };
         map.entry(with_chr).or_insert(i);
 
         // mito aliases
