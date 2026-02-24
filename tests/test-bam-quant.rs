@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
+use std::fs;
 
 const PBMC_URL: &str = "https://cf.10xgenomics.com/samples/cell-exp/3.0.0/pbmc_1k_v3/pbmc_1k_v3_possorted_genome_bam.bam";
 
@@ -89,46 +90,6 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
     cmd.assert().success();
 }
 
-fn make_subset_bam_if_needed(input_bam: &Path, output_bam: &Path, n: u64) {
-    let bai = output_bam.with_extension("bam.bai");
-
-    if output_bam.exists() && bai.exists() {
-        eprintln!("✓ cached: {}", output_bam.display());
-        if !bai.exists() {
-            let script = format!(
-                r#"
-samtools index {bam_out}
-"#,
-                bam_out = output_bam.display()
-            );
-            run(StdCommand::new("bash").arg("-lc").arg(script));
-            eprintln!(" create missing bam index")
-        }
-        return;
-    }
-
-    eprintln!(
-        "⚙ creating subset BAM (first {n} alignments): {}",
-        output_bam.display()
-    );
-
-    // samtools view -h | awk keep headers + first N alignments | samtools view -b | samtools index
-    let script = format!(
-        r#"
-set -euo pipefail
-
-samtools view -h "{in_bam}" \
-  | awk -v n={n} 'BEGIN{{c=0}} /^@/ {{print; next}} {{c++; if (c<=n) print; else exit}}' \
-  | samtools view -b -o "{out_bam}" -
-samtools index "{out_bam}"
-"#,
-        in_bam = input_bam.display(),
-        out_bam = output_bam.display(),
-        n = n
-    );
-
-    run(StdCommand::new("bash").arg("-lc").arg(script));
-}
 
 fn output_nonempty(outdir: &Path) -> bool {
     if !outdir.exists() {
@@ -138,6 +99,14 @@ fn output_nonempty(outdir: &Path) -> bool {
         .ok()
         .and_then(|mut it| it.next())
         .is_some()
+}
+
+fn ensure_clean_dir(outdir: &Path) -> std::io::Result<()> {
+    if outdir.exists() {
+        fs::remove_dir_all(outdir)?; // removes dir + all contents
+    }
+    fs::create_dir_all(outdir)?;
+    Ok(())
 }
 
 #[test]
@@ -178,11 +147,14 @@ fn bam_quant_full_pipeline_cached_with_auto_index() {
     // ---- step 3: build index (via gtf_splice_index) ----
     build_index_if_needed(&gtf_chr1, &index_path);
 
-    // ---- step 4: subset BAM + index it ----
-    make_subset_bam_if_needed(&pbmc_bam, &subset_bam, n_reads);
+    // ---- step 5: run bam-quant - clean outdirs if necessary ----
+    let _ = ensure_clean_dir(&outdir);
+    let outdir2 = cache_dir.join(format!("out_{n_reads}_chr1_intronic"));
+    let _ = ensure_clean_dir(&outdir2);
 
-    // ---- step 5: run bam-quant only if outputs missing ----
+
     if output_nonempty(&outdir) {
+
         eprintln!(
             "✓ outputs already exist, skipping bam-quant: {}",
             outdir.display()
@@ -198,6 +170,8 @@ fn bam_quant_full_pipeline_cached_with_auto_index() {
             index_path.to_str().unwrap(),
             "--outpath",
             outdir.to_str().unwrap(),
+            "--max-reads",
+            "2000000",
         ]);
 
         cmd.assert().success();

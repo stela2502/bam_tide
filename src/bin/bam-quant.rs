@@ -20,7 +20,7 @@
 //   If no merge method exists, see `merge_mapping_info_fallback()` below.
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 use rust_htslib::bam::{Read, Reader, Record};
 use std::path::PathBuf;
@@ -44,11 +44,19 @@ use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Stran
 // Adjust these paths to where RefBlock + record_to_blocks live in bam_tide.
 use bam_tide::core::ref_block::record_to_blocks;
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum QuantMode {
+    Gene,
+    Transcript,
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "bam-quant",
     about = "Quantify 10x BAM against splice index into scdata"
 )]
+
+
 pub struct QuantCli {
     /// Input BAM (10x / CellRanger BAM)
     #[arg(long, short)]
@@ -73,6 +81,10 @@ pub struct QuantCli {
     /// Rayon thread count (0 = default)
     #[arg(long, default_value_t = 0)]
     pub threads: usize,
+
+    /// Collect Gene or Transcript names
+    #[arg(long, value_enum, default_value_t = QuantMode::Gene)]
+    pub quant_mode: QuantMode,
 
     /// Max reads to process (debug/dev)
     #[arg(long)]
@@ -159,46 +171,6 @@ fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u
     Some((spliced, start0, end0))
 }
 
-/// Choose the "best" transcript among candidates, using:
-/// 1) higher MatchClass rank
-/// 2) smaller total overhang (5p + 3p)
-///
-/// Only accept MatchClass ∈ {Compatible, ExactJunctionChain, Intronic}.
-fn pick_best_transcript(
-    idx: &SpliceIndex,
-    candidates: &[TranscriptId],
-    read: &SplicedRead,
-    opts: MatchOptions,
-) -> Option<(TranscriptId, MatchHit)> {
-    let mut best: Option<(TranscriptId, MatchHit)> = None;
-
-    for &tid in candidates {
-        let tr = &idx.transcripts[tid];
-        let hit = tr.match_spliced_read(read, opts);
-
-        if hit.class.rank() < 2 {
-            //
-            continue;
-        }
-
-        match best {
-            None => best = Some((tid, hit)),
-            Some((_btid, bhit)) => {
-                if hit.class > bhit.class {
-                    best = Some((tid, hit));
-                } else if hit.class == bhit.class {
-                    let bo = bhit.overhang_5p_bp + bhit.overhang_3p_bp;
-                    let ho = hit.overhang_5p_bp + hit.overhang_3p_bp;
-                    if ho < bo {
-                        best = Some((tid, hit));
-                    }
-                }
-            }
-        }
-    }
-
-    best
-}
 
 /// Build a chr_name -> chr_id lookup.
 ///
@@ -360,15 +332,28 @@ fn main() -> Result<()> {
 
         if jobs.len() >= CHUNK {
             println!("Processing chunk of size {}", CHUNK);
-            process_chunk(
-                &jobs,
-                &idx,
-                match_opts,
-                &mut merged,
-                &mut merged_intron,
-                &mut merged_report,
-                args.min_mapq,
-            )?;
+
+            match args.quant_mode {
+                QuantMode::Gene => process_chunk_gene(
+                    &jobs,
+                    &idx,
+                    match_opts,
+                    &mut merged,
+                    &mut merged_intron,
+                    &mut merged_report,
+                    args.min_mapq,
+                )?,
+                QuantMode::Transcript => process_chunk_transcript(
+                    &jobs,
+                    &idx,
+                    match_opts,
+                    &mut merged,
+                    &mut merged_intron,
+                    &mut merged_report,
+                    args.min_mapq,
+                )?,
+            }
+
             jobs.clear();
         }
     }
@@ -379,25 +364,47 @@ fn main() -> Result<()> {
 
     if jobs.len() > 0 {
         println!("Processing final chunk of size {}", jobs.len());
-        process_chunk(
-            &jobs,
-            &idx,
-            match_opts,
-            &mut merged,
-            &mut merged_intron,
-            &mut merged_report,
-            args.min_mapq,
-        )?;
+        match args.quant_mode {
+            QuantMode::Gene => process_chunk_gene(
+                &jobs,
+                &idx,
+                match_opts,
+                &mut merged,
+                &mut merged_intron,
+                &mut merged_report,
+                args.min_mapq,
+            )?,
+            QuantMode::Transcript => process_chunk_transcript(
+                &jobs,
+                &idx,
+                match_opts,
+                &mut merged,
+                &mut merged_intron,
+                &mut merged_report,
+                args.min_mapq,
+            )?,
+        }
         jobs.clear();
     }
 
     println!("Writing outfiles");
     // TODO: persist merged scdata to disk in your preferred format.
-    let genes = IndexedGenes::from_names(&idx.chr_names);
-    let _ = merged.write_sparse(&args.outpath, &genes, args.min_cell_counts);
+
+    let features = match args.quant_mode {
+        QuantMode::Gene => {
+            //let names = idx.gene_names();
+            IndexedGenes::from_names(&idx.gene_names())
+        },
+        QuantMode::Transcript => { 
+            //let names = idx.transcript_names();
+            IndexedGenes::from_names(&idx.transcript_names())
+        },
+    };
+
+    let _ = merged.write_sparse(&args.outpath, &features, args.min_cell_counts);
     let _ = merged_intron.write_sparse(
         &add_suffix(&args.outpath, "_intronic"),
-        &genes,
+        &features,
         args.min_cell_counts,
     );
     println!("{merged_report}");
@@ -418,7 +425,59 @@ fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
     parent.join(new_name)
 }
 
-fn process_chunk(
+fn process_chunk_gene(
+    jobs: &[Job],
+    idx: &SpliceIndex,
+    match_opts: MatchOptions,
+    merged: &mut Scdata,
+    merged_intron: &mut Scdata,
+    merged_report: &mut MappingInfo,
+    min_mapq: u8,
+) -> Result<()> {
+    let threads = rayon::current_num_threads().max(1);
+    let chunk_size = (jobs.len() / threads).max(10_000);
+
+    let partials: Vec<(Scdata, Scdata, MappingInfo)> = jobs
+        .par_chunks(chunk_size)
+        .map(|chunk| {
+            let mut sc = Scdata::new(1, MatrixValueType::Real);
+            let mut sc_intron = Scdata::new(1, MatrixValueType::Real);
+            let mut rep = MappingInfo::new(None, min_mapq as f32, usize::MAX);
+
+            for job in chunk { 
+                let gene_hits = idx.match_genes(&job.spliced, match_opts);
+                if gene_hits.is_empty() {
+                    rep.report("no hit");
+                    continue;
+                }
+
+                let g = &gene_hits[0];
+                rep.report(g.best_hit.class.to_string());
+
+                let gid = g.gene_id; // (GeneId is usize in your code)
+
+                if g.best_hit.class == MatchClass::Intronic {
+                    sc_intron.try_insert(&job.cell, GeneUmiHash(gid, job.umi), 1.0, &mut rep);
+                } else {
+                    sc.try_insert(&job.cell, GeneUmiHash(gid, job.umi), 1.0, &mut rep);
+                }
+            }
+
+            (sc, sc_intron, rep)
+        })
+        .collect();
+
+    for (sc, sc_intron, rep) in partials {
+        merged.merge(&sc);
+        merged_intron.merge(&sc_intron);
+        merged_report.merge(&rep);
+    }
+
+    Ok(())
+}
+
+
+fn process_chunk_transcript(
     jobs: &[Job],
     idx: &SpliceIndex,
     match_opts: MatchOptions,
@@ -438,30 +497,21 @@ fn process_chunk(
             let mut rep = MappingInfo::new(None, min_mapq as f32, usize::MAX);
 
             for job in chunk {
-                let cands = idx.candidates_for_span_union(job.chr_id, job.start0, job.end0);
-                if cands.is_empty() {
-                    rep.report("no match");
+                let tx_hits = idx.match_transcripts(&job.spliced, match_opts);
+                if tx_hits.is_empty() {
+                    rep.report("no hit");
                     continue;
                 }
 
-                let best = pick_best_transcript(idx, &cands, &job.spliced, match_opts);
-                let (tid, hit) = match best {
-                    Some(v) => v,
-                    None => {
-                        rep.report("no hit");
-                        continue;
-                    }
-                };
+                let h = &tx_hits[0];
+                rep.report(h.hit.class.to_string());
 
-                rep.report(hit.class.to_string());
-                let gene_id = idx.transcripts[tid].gene_id;
-                rep.report(gene_id.to_string());
-                println!("Found gene_id {gene_id}");
+                let tid = h.transcript_id;
 
-                if hit.class == MatchClass::Intronic {
-                    sc_intron.try_insert(&job.cell, GeneUmiHash(gene_id, job.umi), 1.0, &mut rep);
+                if h.hit.class == MatchClass::Intronic {
+                    sc_intron.try_insert(&job.cell, GeneUmiHash(tid, job.umi), 1.0, &mut rep);
                 } else {
-                    sc.try_insert(&job.cell, GeneUmiHash(gene_id, job.umi), 1.0, &mut rep);
+                    sc.try_insert(&job.cell, GeneUmiHash(tid, job.umi), 1.0, &mut rep);
                 }
             }
 
