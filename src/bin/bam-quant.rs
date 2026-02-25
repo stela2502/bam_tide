@@ -396,7 +396,6 @@ fn main() -> Result<()> {
     }
 
     println!("Writing outfiles");
-    // TODO: persist merged scdata to disk in your preferred format.
 
     let features = match args.quant_mode {
         QuantMode::Gene => {
@@ -413,14 +412,16 @@ fn main() -> Result<()> {
     // 1) Compute passing cells ONCE from the real data (merged)
     let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
 
-    merged_report.stop_multi_processor_time();
+    
 
     // 2) Apply to BOTH datasets
     merged.restrict_to_cells(&pass);
     merged_intron.restrict_to_cells(&pass);
-
+    merged_report.stop_multi_processor_time();
+    
+    println!("Writing matrix files");
     let _ = merged.write_sparse(&args.outpath, &features, 0);
-
+    println!("Writing intronic matrix files");
     let _ = merged_intron.write_sparse(
         &add_suffix(&args.outpath, "_intronic"),
         &features,
