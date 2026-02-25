@@ -143,7 +143,7 @@ dependencies = [
  "bigtools",
  "clap",
  "gtf_splice_index",
- "int_to_str 0.1.0",
+ "int_to_str",
  "mapping_info",
  "rayon",
  "rust-htslib",
@@ -733,6 +733,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 [[package]]
 name = "gtf_splice_index"
 version = "0.1.0"
+source = "git+https://github.com/stela2502/gtf_splice_index.git#a9b2c5ba6c60e31737839547cb293621ea727b86"
 dependencies = [
  "anyhow",
  "bincode",
@@ -973,10 +974,6 @@ dependencies = [
 [[package]]
 name = "int_to_str"
 version = "0.1.0"
-
-[[package]]
-name = "int_to_str"
-version = "0.1.0"
 source = "git+https://github.com/stela2502/int_to_str.git#b7bf33e03ba24c3c44cdfe8feef5239d433278a6"
 
 [[package]]
@@ -1021,9 +1018,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.89"
+version = "0.3.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4eacb0641a310445a4c513f2a5e23e19952e269c6a38887254d5f837a305506"
+checksum = "14dc6f6450b3f6d4ed5b16327f38fed626d375a886159ca555bd7822c0c3a5a6"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -1132,7 +1129,7 @@ dependencies = [
 [[package]]
 name = "mapping_info"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/mapping_info.git#66d2f7e87f2d7b9323224e5c6cc3f0c109205907"
+source = "git+https://github.com/stela2502/mapping_info.git#53d59c59bdc568bf485d2182c0102bdffdba5754"
 dependencies = [
  "atty",
  "chrono",
@@ -1385,9 +1382,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.9"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
+checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "ring"
@@ -1511,9 +1508,10 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "scdata"
 version = "0.1.0"
+source = "git+https://github.com/stela2502/scdata.git#8417d4435934164a39d0e700083359f18f43f86a"
 dependencies = [
  "flate2",
- "int_to_str 0.1.0 (git+https://github.com/stela2502/int_to_str.git)",
+ "int_to_str",
  "mapping_info",
  "rayon",
  "regex",
@@ -1898,9 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.112"
+version = "0.2.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05d7d0fce354c88b7982aec4400b3e7fcf723c32737cef571bd165f7613557ee"
+checksum = "60722a937f594b7fde9adb894d7c092fc1bb6612897c46368d18e7a20208eff2"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -1911,9 +1909,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.112"
+version = "0.2.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55839b71ba921e4f75b674cb16f843f4b1f3b26ddfcb3454de1cf65cc021ec0f"
+checksum = "0fac8c6395094b6b91c4af293f4c79371c163f9a6f56184d2c9a85f5a95f3950"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -1921,9 +1919,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.112"
+version = "0.2.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caf2e969c2d60ff52e7e98b7392ff1588bffdd1ccd4769eba27222fd3d621571"
+checksum = "ab3fabce6159dc20728033842636887e4877688ae94382766e00b180abac9d60"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -1934,9 +1932,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.112"
+version = "0.2.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0861f0dcdf46ea819407495634953cdcc8a8c7215ab799a7a7ce366be71c7b30"
+checksum = "de0e091bdb824da87dc01d967388880d017a0a9bc4f3bdc0d86ee9f9336e3bb5"
 dependencies = [
  "unicode-ident",
 ]

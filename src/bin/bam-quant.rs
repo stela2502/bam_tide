@@ -36,9 +36,8 @@ const CHUNK: usize = 2_000_000;
 
 // ---- Your splice index / transcript-matching crate ----
 // Adjust these paths to your actual crate/module names.
-use gtf_splice_index::model::MatchHit;
 use gtf_splice_index::types::RefBlock;
-use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Strand, TranscriptId};
+use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Strand};
 
 // ---- Your ref-block conversion ----
 // Adjust these paths to where RefBlock + record_to_blocks live in bam_tide.
@@ -122,9 +121,9 @@ pub struct QuantCli {
 struct Job {
     cell: u64,
     umi: u64,
-    chr_id: usize,
-    start0: u32,
-    end0: u32,
+    //chr_id: usize,
+    //start0: u32,
+    //end0: u32,
     spliced: SplicedRead,
 }
 
@@ -155,7 +154,7 @@ fn dna_to_u64(seq: &str) -> Option<u64> {
 
 /// Build SplicedRead + union span [start0, end0) from a BAM record.
 fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u32, u32)> {
-    let mut blocks: Vec<RefBlock> = record_to_blocks(rec);
+    let blocks: Vec<RefBlock> = record_to_blocks(rec);
     if blocks.is_empty() {
         return None;
     }
@@ -172,6 +171,7 @@ fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u
 }
 
 
+/*
 /// Build a chr_name -> chr_id lookup.
 ///
 /// Adjust this if your SpliceIndex already provides a method, e.g.
@@ -189,7 +189,7 @@ fn build_chr_map(idx: &SpliceIndex) -> std::collections::HashMap<String, usize> 
         map.insert(n.clone(), i);
     }
     map
-}
+}*/
 
 fn main() -> Result<()> {
     let args = QuantCli::parse();
@@ -236,6 +236,8 @@ fn main() -> Result<()> {
         args.min_mapq as f32,
         args.max_reads.unwrap_or(usize::MAX),
     );
+    merged_report.start_counter();
+
     #[cfg(debug_assertions)]
     let mut i = 0;
     for r in reader.records() {
@@ -309,7 +311,7 @@ fn main() -> Result<()> {
             }
         };
 
-        let (spliced, start0, end0) = match record_to_spliced_read(&rec, chr_id) {
+        let (spliced, _start0, _end0) = match record_to_spliced_read(&rec, chr_id) {
             Some(v) => v,
             None => continue,
         };
@@ -317,9 +319,9 @@ fn main() -> Result<()> {
         jobs.push(Job {
             cell,
             umi,
-            chr_id,
-            start0,
-            end0,
+            //chr_id,
+            //start0,
+            //end0,
             spliced,
         });
 
@@ -332,6 +334,7 @@ fn main() -> Result<()> {
 
         if jobs.len() >= CHUNK {
             println!("Processing chunk of size {}", CHUNK);
+            merged_report.stop_file_io_time();
 
             match args.quant_mode {
                 QuantMode::Gene => process_chunk_gene(
@@ -364,6 +367,7 @@ fn main() -> Result<()> {
 
     if jobs.len() > 0 {
         println!("Processing final chunk of size {}", jobs.len());
+        merged_report.stop_file_io_time();
         match args.quant_mode {
             QuantMode::Gene => process_chunk_gene(
                 &jobs,
@@ -400,6 +404,8 @@ fn main() -> Result<()> {
             IndexedGenes::from_names(&idx.transcript_names())
         },
     };
+    merged_report.stop_single_processor_time();
+
 
     let _ = merged.write_sparse(&args.outpath, &features, args.min_cell_counts);
     let _ = merged_intron.write_sparse(
@@ -407,6 +413,8 @@ fn main() -> Result<()> {
         &features,
         args.min_cell_counts,
     );
+    merged_report.stop_file_io_time();
+
     println!("{merged_report}");
 
     Ok(())
@@ -455,6 +463,7 @@ fn process_chunk_gene(
                 rep.report(g.best_hit.class.to_string());
 
                 let gid = g.gene_id; // (GeneId is usize in your code)
+                //println!("cell: {}",job.cell);
 
                 if g.best_hit.class == MatchClass::Intronic {
                     sc_intron.try_insert(&job.cell, GeneUmiHash(gid, job.umi), 1.0, &mut rep);
@@ -467,11 +476,14 @@ fn process_chunk_gene(
         })
         .collect();
 
+    merged_report.stop_multi_processor_time();
+
     for (sc, sc_intron, rep) in partials {
         merged.merge(&sc);
         merged_intron.merge(&sc_intron);
         merged_report.merge(&rep);
     }
+    merged_report.stop_single_processor_time();
 
     Ok(())
 }
@@ -518,12 +530,14 @@ fn process_chunk_transcript(
             (sc, sc_intron, rep)
         })
         .collect();
+    merged_report.stop_multi_processor_time();
 
     for (sc, sc_intron, rep) in partials {
         merged.merge(&sc);
         merged_intron.merge(&sc_intron);
         merged_report.merge(&rep);
     }
+    merged_report.stop_single_processor_time();
 
     Ok(())
 }

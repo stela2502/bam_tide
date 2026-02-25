@@ -165,13 +165,15 @@ fn bam_quant_full_pipeline_cached_with_auto_index() {
         let mut cmd = Command::cargo_bin("bam-quant").unwrap();
         cmd.args([
             "--bam",
-            subset_bam.to_str().unwrap(),
+            pbmc_bam.to_str().unwrap(),
             "--index",
             index_path.to_str().unwrap(),
             "--outpath",
             outdir.to_str().unwrap(),
             "--max-reads",
-            "2000000",
+            "200000",
+            "--min-cell-counts",
+            "10",
         ]);
 
         cmd.assert().success();
