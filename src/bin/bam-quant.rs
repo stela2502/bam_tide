@@ -32,6 +32,10 @@ use mapping_info::MappingInfo;
 
 use int_to_str::int_to_str::IntToStr;
 
+// for the log file...
+use std::fs::File;
+use std::io::Write;
+
 const CHUNK: usize = 2_000_000;
 
 // ---- Your splice index / transcript-matching crate ----
@@ -415,7 +419,14 @@ fn main() -> Result<()> {
     );
     merged_report.stop_file_io_time();
 
-    println!("{merged_report}");
+    println!("{merged_report}"); 
+
+    let log_str = format!("{merged_report}");
+    let log_path = args.outpath.with_extension("log");
+    let mut file = File::create(&log_path)
+        .expect("failed to create log file");
+    file.write_all(merged_report.as_bytes())
+        .expect("failed to write log file");
 
     Ok(())
 }
