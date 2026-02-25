@@ -410,12 +410,21 @@ fn main() -> Result<()> {
     };
     merged_report.stop_single_processor_time();
 
+    // 1) Compute passing cells ONCE from the real data (merged)
+    let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
 
-    let _ = merged.write_sparse(&args.outpath, &features, args.min_cell_counts);
+    merged_report.stop_multi_processor_time();
+
+    // 2) Apply to BOTH datasets
+    merged.restrict_to_cells(&pass);
+    merged_intron.restrict_to_cells(&pass);
+
+    let _ = merged.write_sparse(&args.outpath, &features, 0);
+
     let _ = merged_intron.write_sparse(
         &add_suffix(&args.outpath, "_intronic"),
         &features,
-        args.min_cell_counts,
+        0,
     );
     merged_report.stop_file_io_time();
 
