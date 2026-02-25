@@ -733,7 +733,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 [[package]]
 name = "gtf_splice_index"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/gtf_splice_index.git#a9b2c5ba6c60e31737839547cb293621ea727b86"
+source = "git+https://github.com/stela2502/gtf_splice_index.git#1c5a829b09fcd169917c8ead66d8289a5066605c"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1129,7 +1129,7 @@ dependencies = [
 [[package]]
 name = "mapping_info"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/mapping_info.git#53d59c59bdc568bf485d2182c0102bdffdba5754"
+source = "git+https://github.com/stela2502/mapping_info.git#3e00152648d54de943288ac1ca877cf15f3672e7"
 dependencies = [
  "atty",
  "chrono",
