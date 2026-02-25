@@ -425,7 +425,7 @@ fn main() -> Result<()> {
     let log_path = args.outpath.with_extension("log");
     let mut file = File::create(&log_path)
         .expect("failed to create log file");
-    file.write_all(merged_report.as_bytes())
+    file.write_all(log_str.as_bytes())
         .expect("failed to write log file");
 
     Ok(())
