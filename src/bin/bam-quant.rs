@@ -73,6 +73,12 @@ pub struct QuantCli {
     #[arg(long, short)]
     pub outpath: std::path::PathBuf,
 
+    /// Split Intronic from rest
+    ///
+    /// This is currently not recommended as exon intron detection seams to be too strict from normal sequencing data
+    #[arg(long, short, default_value_t = false)]
+    pub split_intronic: Bool,
+
     /// Minimum MAPQ
     #[arg(long, default_value_t = 0)]
     pub min_mapq: u8,
@@ -409,24 +415,36 @@ fn main() -> Result<()> {
     };
     merged_report.stop_single_processor_time();
 
-    // 1) Compute passing cells ONCE from the real data (merged)
-    let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
-
     
 
-    // 2) Apply to BOTH datasets
-    merged.restrict_to_cells(&pass);
-    merged_intron.restrict_to_cells(&pass);
-    merged_report.stop_multi_processor_time();
-    
-    println!("Writing matrix files");
-    let _ = merged.write_sparse(&args.outpath, &features, 0);
-    println!("Writing intronic matrix files");
-    let _ = merged_intron.write_sparse(
-        &add_suffix(&args.outpath, "_intronic"),
-        &features,
-        0,
-    );
+    if arg.split_intronic{
+        // 1) Compute passing cells ONCE from the real data (merged)
+        let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
+        // 2) Apply to BOTH datasets
+        merged.restrict_to_cells(&pass);
+        merged_intron.restrict_to_cells(&pass);
+        merged_report.stop_multi_processor_time();
+        
+        println!("Writing matrix files");
+        let _ = merged.write_sparse(&args.outpath, &features, 0);
+        println!("Writing intronic matrix files");
+        let _ = merged_intron.write_sparse(
+            &add_suffix(&args.outpath, "_intronic"),
+            &features,
+            0,
+        );
+    }else {
+        merged.merge( merged_intron );
+        let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
+        merged.restrict_to_cells(&pass);
+
+        merged_report.stop_multi_processor_time();
+
+        println!("Writing matrix files");
+        let _ = merged.write_sparse(&args.outpath, &features, 0);
+
+    }
+
     merged_report.stop_file_io_time();
 
     println!("{merged_report}"); 
