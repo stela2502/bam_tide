@@ -77,7 +77,7 @@ pub struct QuantCli {
     ///
     /// This is currently not recommended as exon intron detection seams to be too strict from normal sequencing data
     #[arg(long, short, default_value_t = false)]
-    pub split_intronic: Bool,
+    pub split_intronic: bool,
 
     /// Minimum MAPQ
     #[arg(long, default_value_t = 0)]
@@ -417,7 +417,7 @@ fn main() -> Result<()> {
 
     
 
-    if arg.split_intronic{
+    if args.split_intronic{
         // 1) Compute passing cells ONCE from the real data (merged)
         let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
         // 2) Apply to BOTH datasets
@@ -434,7 +434,7 @@ fn main() -> Result<()> {
             0,
         );
     }else {
-        merged.merge( merged_intron );
+        merged.merge( &merged_intron );
         let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
         merged.restrict_to_cells(&pass);
 
