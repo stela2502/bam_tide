@@ -33,7 +33,7 @@ struct Opts {
     #[arg(short, long, num_args(1..), value_delimiter = ' ')]
     values: Vec<String>,
 
-    /// Output prefix (can include directory). Actual names become: <ofile><values_file_stem>.bam
+    /// Output prefix (can include directory). Actual names become: `<ofile><values_file_stem>.bam`
     #[arg(short, long)]
     ofile: String,
 
