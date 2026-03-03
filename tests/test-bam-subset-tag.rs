@@ -9,8 +9,8 @@ use assert_cmd::cargo::cargo_bin_cmd;
 /// Parse:
 ///   "Selected 37/8292 reads"
 /// and subsequent lines like:
-///   "11  legacy/testData/output/two_clusters_barcodes.bam"
-///   "26  legacy/testData/output/two_clusters_barcodes2.bam"
+///   "11  testData/output/two_clusters_barcodes.bam"
+///   "26  testData/output/two_clusters_barcodes2.bam"
 fn parse_cli_report(stdout: &str) -> (usize, usize, BTreeMap<String, usize>) {
     let mut selected: Option<usize> = None;
     let mut total: Option<usize> = None;
@@ -98,16 +98,16 @@ fn assert_cli_numerics(
 #[test]
 fn test_multi_subset_bam() {
 
-    let path = Path::new("legacy/testData/output");
+    let path = Path::new("testData/output");
     if path.exists() {
         fs::remove_dir_all(path).expect("Failed to remove directory");
     }
 
 
     let args = &[
-        "-b", "legacy/testData/bam_subset_test.bam",
-        "-v", "legacy/testData/barcodes.txt","legacy/testData/barcodes2.txt",
-        "-o", "legacy/testData/output/two_clusters_",
+        "-b", "testData/bam_subset_test.bam",
+        "-v", "testData/barcodes.txt","testData/barcodes2.txt",
+        "-o", "testData/output/two_clusters_",
     ];
 
     // Execute the command with the provided arguments
@@ -142,7 +142,7 @@ fn test_multi_subset_bam() {
     let expect = vec!["two_clusters_barcodes.bam","two_clusters_barcodes2.bam"];
 
     for file in expect{
-        let ofile= "legacy/testData/output/".to_string() +file;
+        let ofile= "testData/output/".to_string() +file;
         assert!(Path::new( &ofile ).exists(), "Expected outfile {} does not exist!", ofile);
     }
 
@@ -152,8 +152,8 @@ fn test_multi_subset_bam() {
         37,     // expected selected
         8292,   // expected total
         &[
-            ("legacy/testData/output/two_clusters_barcodes.bam", 11),
-            ("legacy/testData/output/two_clusters_barcodes2.bam", 26),
+            ("testData/output/two_clusters_barcodes.bam", 11),
+            ("testData/output/two_clusters_barcodes2.bam", 26),
         ],
     );
 

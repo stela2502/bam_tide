@@ -87,8 +87,8 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
 
 
     // --- config ---
-    let bam = Path::new("legacy/testData/subset.bam");
-    let golden = Path::new("legacy/testData/subset.deepTools.bw");
+    let bam = Path::new("testData/subset.bam");
+    let golden = Path::new("testData/subset.deepTools.bw");
     let bin_width: u32 = 50;
 
     // thresholds
@@ -103,9 +103,9 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         return Err(format!("missing golden bigWig: {}", golden.display()));
     }
 
-    let tmp = Path::new("legacy/testData/");
+    let tmp = Path::new("testData/");
     let out_bw = tmp.join("rust.bw");
-    let out_tsv = Path::new("legacy/testData/cmp.tsv");
+    let out_tsv = Path::new("testData/cmp.tsv");
 
     // --- produce rust bigWig ---
     let args = &[
