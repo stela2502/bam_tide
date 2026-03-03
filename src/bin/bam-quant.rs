@@ -46,6 +46,7 @@ use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Stran
 // ---- Your ref-block conversion ----
 // Adjust these paths to where RefBlock + record_to_blocks live in bam_tide.
 use bam_tide::core::ref_block::record_to_blocks;
+use bam_tide::compute_io_threads;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum QuantMode {
@@ -73,6 +74,8 @@ pub struct QuantCli {
     #[arg(long, short)]
     pub outpath: std::path::PathBuf,
 
+
+
     /// Split Intronic from rest
     ///
     /// This is currently not recommended as exon intron detection seams to be too strict from normal sequencing data
@@ -87,8 +90,8 @@ pub struct QuantCli {
     #[arg(long, default_value_t = false)]
     pub read1_only: bool,
 
-    /// Rayon thread count (0 = default)
-    #[arg(long, default_value_t = 0)]
+    /// threads for bam read process (default 4)
+    #[arg(long, default_value_t = 4)]
     pub threads: usize,
 
     /// Collect Gene or Transcript names
@@ -228,6 +231,15 @@ fn main() -> Result<()> {
 
     let mut reader = Reader::from_path(&args.bam)
         .with_context(|| format!("bam file could not be read: {}", args.bam.display()))?;
+
+    let hts_threads = compute_io_threads(args.threads);
+    if let Err(e) = reader.set_threads(hts_threads) {
+        eprintln!(
+            "Warning: failed to enable HTSlib threading ({}). Continuing single-threaded.",
+            e
+        )
+    };
+    reader.set_threads(hts_threads)?;
     let header = reader.header().clone();
 
     // ----------------------------

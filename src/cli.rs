@@ -22,6 +22,10 @@ pub struct CoverageCli {
     #[arg(short = 'o', long)]
     pub outfile: String,
 
+    /// threads for bam read process (default 4)
+    #[arg(default_value_t = 4, short, long)]
+    pub threads: usize,
+
     /*
     /// tag name for the CELL information (default CB for velocity default - change to CR for CellRanger)
     #[arg(short = 'c', long, default_value = "CB")]

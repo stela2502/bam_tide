@@ -1,20 +1,12 @@
 use std::fs::File;
 use std::path::{ PathBuf};
-use std::process::Command;
+use assert_cmd::Command;
 
 use tempfile::tempdir;
 
 // bigtools read API
 use bigtools::BigWigRead;
 
-fn exe_path(name: &str) -> PathBuf {
-    let base = if cfg!(debug_assertions) {
-        PathBuf::from("./target/debug")
-    } else {
-        PathBuf::from("./target/release")
-    };
-    base.join(name)
-}
 
 fn run_ok(cmd: &mut Command) -> Result<(), String> {
     let out = cmd.output().map_err(|e| format!("failed to spawn: {e:?}"))?;
@@ -124,42 +116,37 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     let out_tsv = Path::new("legacy/testData/cmp.tsv");
 
     // --- produce rust bigWig ---
-    let exe_cov = exe_path("bam-coverage");
-    if !exe_cov.exists() {
-        return Err(format!("missing binary: {}", exe_cov.display()));
-    }
+    let args = &[
+        "-b", bam.to_str().unwrap(),
+        "-o", out_bw.to_str().unwrap(),
+        "-w", &bin_width.to_string(),
+        "-n", "not",
+        "--min-mapping-quality", "0",
+    ];
 
-    run_ok(
-        Command::new(&exe_cov).args([
-            "-b", bam.to_str().unwrap(),
-            "-o", out_bw.to_str().unwrap(),
-            "-w", &bin_width.to_string(),
-            "-n", "not",
-            "--min-mapping-quality", "0",
-        ])
-    )?;
+    let exe_cov = assert_cmd::Command::cargo_bin("bam-coverage").unwrap().args( args ).output()
+        .map_err(|e| {
+            eprintln!("Failed to execute command: {}", e);
+            e
+        }).unwrap();
+
 
     if !out_bw.exists() || fs::metadata(&out_bw).map_err(|e| format!("stat rust.bw: {e:?}"))?.len() == 0 {
         return Err("rust bigWig not created or empty".into());
     }
 
     // --- compare with bw-compare ---
-    let exe_cmp = exe_path("bw-compare");
-    if !exe_cmp.exists() {
-        return Err(format!("missing binary: {}", exe_cmp.display()));
-    }
-
-    // IMPORTANT: adapt args to your bw-compare CLI.
-    // Goal: emit a TSV with a TOTAL row containing fields:
-    //   n_over_eps, frac_n_over_eps, mean_abs, rmse, max_abs, pearson_rho
-    run_ok(
-        Command::new(&exe_cmp).args([
-            "-a", golden.to_str().unwrap(),
-            "-b", out_bw.to_str().unwrap(),
-            "--eps", &eps_abs.to_string(),
-            "-o", out_tsv.to_str().unwrap(),
-        ])
-    )?;
+    let args_cmp =&[
+        "-a", golden.to_str().unwrap(),
+        "-b", out_bw.to_str().unwrap(),
+        "--eps", &eps_abs.to_string(),
+        "-o", out_tsv.to_str().unwrap(),
+    ];
+    let exe_cmp = assert_cmd::Command::cargo_bin("bw-compare").unwrap().args(args_cmp).output()
+        .map_err(|e| {
+            eprintln!("Failed to execute command: {}", e);
+            e
+        }).unwrap();
 
     let tsv = fs::read_to_string(&out_tsv).map_err(|e| format!("read cmp.tsv: {e:?}"))?;
 
@@ -177,8 +164,8 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     }
 
     let cmp_cmdline = format!(
-        "{} -a {} -b {}",
-        exe_cmp.display(),
+        "{:?} -a {} -b {}",
+        exe_cmp,
         golden.display(),
         out_bw.display()
     );

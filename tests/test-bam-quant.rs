@@ -77,7 +77,7 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
 
     eprintln!("⚙ building index: {}", index_path.display());
 
-    let mut cmd = assert_cmd::Command::new("gtf_splice_index");
+    let mut cmd = assert_cmd::Command::cargo_bin("gtf_splice_index").unwrap();
 
     cmd.args([
         "build",

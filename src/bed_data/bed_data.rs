@@ -16,6 +16,7 @@ use crate::core::ref_block::record_to_blocks;
 
 use crate::core::alignment_policy::AlignmentPolicy;
 use crate::cli::CoverageCli;
+use crate::compute_io_threads;
 
 use clap::ValueEnum;
 
@@ -75,6 +76,13 @@ impl BedData {
     pub fn from_bam_with_policy(opts: &CoverageCli) -> Result<BedData, String> {
 	    let mut reader = Reader::from_path(&opts.bam)
             .map_err(|e| format!("bam file could not be read: {e:?}"))?;
+        let hts_threads = compute_io_threads(opts.threads);
+        if let Err(e) = reader.set_threads(hts_threads) {
+            eprintln!(
+                "Warning: failed to enable HTSlib threading ({}). Continuing single-threaded.",
+                e
+            )
+        };
 	    let header = reader.header().clone();
 
 	    let mut bed = BedData::init_from_header_view(
