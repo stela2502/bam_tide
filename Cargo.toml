@@ -11,6 +11,15 @@ readme = "README.md"
 keywords = ["bioinformatics", "bam", "coverage", "bigwig", "ngs"]
 categories = ["science", "command-line-utilities"]
 authors = ["Stefan Lang"]
+include = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "README.md",
+  "LICENSE*",
+  "src/**",
+  "build.rs",
+]
+
 
 [dependencies]
 anyhow = "1.0.100"
