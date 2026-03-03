@@ -26,7 +26,7 @@ struct Opts {
     tag: String,
 
     /// threads for bam read process (default 4)
-    #[arg(default_value_t = 4, short, long)]
+    #[arg(default_value_t = 4, long)]
     threads: usize,
 
     /// Text files: each file is one group, one tag value per line
