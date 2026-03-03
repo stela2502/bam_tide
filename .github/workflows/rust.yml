@@ -24,14 +24,16 @@ jobs:
             libz-dev \
             pkg-config
 
-      # 3. Set up Rust
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      # Replace actions-rs/toolchain with dtolnay/rust-toolchain (actively maintained)
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      # 4. Build and run tests
+      # Optional but recommended: cache cargo + target
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
       - name: Build
         run: cargo build --verbose
+
       - name: Test
         run: cargo test --verbose
