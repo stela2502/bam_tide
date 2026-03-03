@@ -1,12 +1,9 @@
 
 // Import necessary modules
-use std::fs::{self, File};
-use std::io::stdout;
+use std::fs::{self};
 use std::path::Path;
 use std::collections::BTreeMap;
-
-use assert_cmd::Command;
-
+use assert_cmd::cargo::cargo_bin_cmd;
 
 
 /// Parse:
@@ -100,7 +97,6 @@ fn assert_cli_numerics(
 
 #[test]
 fn test_multi_subset_bam() {
-    let is_release_mode = !cfg!(debug_assertions);
 
     let path = Path::new("legacy/testData/output");
     if path.exists() {
@@ -110,12 +106,12 @@ fn test_multi_subset_bam() {
 
     let args = &[
         "-b", "legacy/testData/bam_subset_test.bam",
-        "-v", "legacy/testData/barcodes.txt","testData/barcodes2.txt",
+        "-v", "legacy/testData/barcodes.txt","legacy/testData/barcodes2.txt",
         "-o", "legacy/testData/output/two_clusters_",
     ];
 
     // Execute the command with the provided arguments
-    let mut cmd = assert_cmd::Command::cargo_bin( "bam-subset-tag" ).unwrap();
+    let mut cmd = cargo_bin_cmd!( "bam-subset-tag" );
     cmd.args( args );
     let exe = cmd.get_program().to_string_lossy();
 

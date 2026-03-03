@@ -14,7 +14,7 @@ fn test_bam_coverage_matches_deeptools_bigwig() {
     let py_bw = out_dir.join("_ref_deeptools.bw");
     let rs_bw = out_dir.join("_test_bam_coverage.bw");
 
-    let eps_abs: f64 = 0.0;
+    let _eps_abs: f64 = 0.0;
     let max_frac_bad: f64 = 0.0;
     let min_corr: f64 = 1.0;
 

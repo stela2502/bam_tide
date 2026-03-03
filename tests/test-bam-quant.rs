@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use std::fs;
@@ -77,17 +77,23 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
 
     eprintln!("⚙ building index: {}", index_path.display());
 
-    let mut cmd = assert_cmd::Command::cargo_bin("gtf_splice_index").unwrap();
+    let mut cmd = StdCommand::new("gtf_splice_index");
 
-    cmd.args([
+    let output = cmd.args([
         "build",
         "-a",
         gtf_chr1.to_str().unwrap(),
         "-i",
         index_path.to_str().unwrap(),
-    ]);
+    ]).output().expect("failed to run gtf_splice_index");
 
-    cmd.assert().success();
+    if !output.status.success() {
+        panic!(
+            "gtf_splice_index failed\n\nstdout:\n{}\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
 }
 
 
@@ -130,7 +136,7 @@ fn bam_quant_full_pipeline_cached_with_auto_index() {
     let gtf_chr1 = cache_dir.join("gencode.basic.chr1.gtf");
 
     // Derived artifacts
-    let subset_bam = cache_dir.join(format!("pbmc_subset_{n_reads}.bam"));
+    let _subset_bam = cache_dir.join(format!("pbmc_subset_{n_reads}.bam"));
     let index_path = cache_dir.join("splice_index_chr1.dat");
 
     // Output
@@ -162,7 +168,7 @@ fn bam_quant_full_pipeline_cached_with_auto_index() {
     } else {
         eprintln!("🚀 running bam-quant…");
 
-        let mut cmd = Command::cargo_bin("bam-quant").unwrap();
+        let mut cmd = cargo_bin_cmd!("bam-quant");
         cmd.args([
             "--bam",
             pbmc_bam.to_str().unwrap(),

@@ -2,6 +2,15 @@
 name = "bam_tide"
 version = "1.2.0"
 edition = "2024"
+description = "A fast and memory-efficient BAM processing toolkit for coverage calculation and quantification, designed as a scalable alternative to deeptools bamCoverage for large sequencing datasets. And additional BAM tools."
+license = "MIT"
+repository = "https://github.com/stela2502/bam_tide"
+homepage = "https://github.com/stela2502/bam_tide"
+documentation = "https://docs.rs/bam_tide"
+readme = "README.md"
+keywords = ["bioinformatics", "bam", "coverage", "bigwig", "ngs"]
+categories = ["science", "command-line-utilities"]
+authors = ["Stefan Lang"]
 
 [dependencies]
 anyhow = "1.0.100"
@@ -9,11 +18,10 @@ bigtools = "0.5.6"
 clap = { version = "4.5.56", features = ["derive"] }
 rayon = "1.11.0"
 rust-htslib = "1.0.0"
-tempfile = "3.24.0"
 tokio = "1.49.0"
 
-scdata = { git="https://github.com/stela2502/scdata.git" }
-gtf_splice_index = { git="https://github.com/stela2502/gtf_splice_index.git" }
-mapping_info = { git="https://github.com/stela2502/mapping_info.git" }
-int_to_str = { git="https://github.com/stela2502/int_to_str.git"}
+scdata = "0.1.0" 
+gtf_splice_index = "0.4.0" 
+mapping_info =  "0.1.0"
+int_to_str = { package="stela-int-to-str", version="0.1.0" }
 assert_cmd = "2.1.2"

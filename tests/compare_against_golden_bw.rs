@@ -1,13 +1,6 @@
-use std::fs::File;
-use std::path::{ PathBuf};
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 
-use tempfile::tempdir;
-
-// bigtools read API
-use bigtools::BigWigRead;
-
-
+/*
 fn run_ok(cmd: &mut Command) -> Result<(), String> {
     let out = cmd.output().map_err(|e| format!("failed to spawn: {e:?}"))?;
     if !out.status.success() {
@@ -21,6 +14,7 @@ fn run_ok(cmd: &mut Command) -> Result<(), String> {
     }
     Ok(())
 }
+
 
 /// Compute weighted mean value in [start,end) from bigWig.
 /// If no intervals overlap, returns 0.0 (bin is empty).
@@ -80,13 +74,11 @@ fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
     }
     num / (den_x.sqrt() * den_y.sqrt())
 }
-
+*/
 #[test]
 fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     use std::fs;
     use std::path::Path;
-    use std::process::Command;
-    use tempfile::tempdir;
 
     if cfg!(debug_assertions) {
         eprintln!("Skipping slow bigWig comparison test in debug mode");
@@ -111,8 +103,8 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         return Err(format!("missing golden bigWig: {}", golden.display()));
     }
 
-    let tmp = tempdir().map_err(|e| format!("tempdir: {e:?}"))?;
-    let out_bw = tmp.path().join("rust.bw");
+    let tmp = Path::new("legacy/testData/");
+    let out_bw = tmp.join("rust.bw");
     let out_tsv = Path::new("legacy/testData/cmp.tsv");
 
     // --- produce rust bigWig ---
@@ -124,9 +116,10 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         "--min-mapping-quality", "0",
     ];
 
-    let exe_cov = assert_cmd::Command::cargo_bin("bam-coverage").unwrap().args( args ).output()
+    let mut cmd = cargo_bin_cmd!("bam-coverage");
+    let _exe_cov = cmd.args( args ).output()
         .map_err(|e| {
-            eprintln!("Failed to execute command: {}", e);
+            eprintln!("Failed to execute bam-coverage: {}", e);
             e
         }).unwrap();
 
@@ -142,7 +135,9 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         "--eps", &eps_abs.to_string(),
         "-o", out_tsv.to_str().unwrap(),
     ];
-    let exe_cmp = assert_cmd::Command::cargo_bin("bw-compare").unwrap().args(args_cmp).output()
+    let mut cmd_cmp = cargo_bin_cmd!("bw-compare");
+
+    let _exe_cmp = cmd_cmp.args(args_cmp).output()
         .map_err(|e| {
             eprintln!("Failed to execute command: {}", e);
             e
@@ -165,7 +160,7 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
 
     let cmp_cmdline = format!(
         "{:?} -a {} -b {}",
-        exe_cmp,
+        cmd_cmp,
         golden.display(),
         out_bw.display()
     );
