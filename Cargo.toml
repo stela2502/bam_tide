@@ -1,6 +1,6 @@
 [package]
 name = "bam_tide"
-version = "1.2.0"
+version = "1.2.2"
 edition = "2024"
 description = "A fast and memory-efficient BAM processing toolkit for coverage calculation and quantification, designed as a scalable alternative to deeptools bamCoverage for large sequencing datasets. And additional BAM tools."
 license = "MIT"
@@ -26,7 +26,7 @@ anyhow = "1.0.100"
 bigtools = "0.5.6"
 clap = { version = "4.5.56", features = ["derive"] }
 rayon = "1.11.0"
-rust-htslib = "1.0.0"
+rust-htslib = {version = "1.0.0",  features = ["static"]}
 tokio = "1.49.0"
 
 scdata = "0.1.0" 

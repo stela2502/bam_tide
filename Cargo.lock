@@ -136,7 +136,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bam_tide"
-version = "1.2.0"
+version = "1.2.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -174,7 +174,7 @@ dependencies = [
  "crossbeam-utils",
  "futures",
  "index_list",
- "itertools 0.10.5",
+ "itertools",
  "libdeflater",
  "ryu",
  "serde",
@@ -203,7 +203,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools",
  "lazy_static",
  "lazycell",
  "proc-macro2",
@@ -982,15 +982,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
