@@ -26,7 +26,8 @@ anyhow = "1.0.100"
 bigtools = "0.5.6"
 clap = { version = "4.5.56", features = ["derive"] }
 rayon = "1.11.0"
-rust-htslib = {version = "1.0.0",  features = ["static"]}
+#rust-htslib = {version = "1.0.0",  features = ["static"], default-features = false }
+rust-htslib = { git = "https://github.com/stela2502/rust-htslib.git", default-features = false }
 tokio = "1.49.0"
 
 scdata = "0.1.0" 
