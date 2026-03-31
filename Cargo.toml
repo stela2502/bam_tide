@@ -12,8 +12,8 @@ rust-htslib = "1.0.0"
 tempfile = "3.24.0"
 tokio = "1.49.0"
 
-scdata = { git="https://github.com/stela2502/scdata.git" }
-gtf_splice_index = { git="https://github.com/stela2502/gtf_splice_index.git" }
-mapping_info = { git="https://github.com/stela2502/mapping_info.git" }
-int_to_str = { git="https://github.com/stela2502/int_to_str.git"}
+scdata = "0.2.1"
+gtf_splice_index = "0.4.0"
+mapping_info = "0.1.0"
+int_to_str = { package = "stela-int-to-str", version = "0.1.0" }
 assert_cmd = "2.1.2"
