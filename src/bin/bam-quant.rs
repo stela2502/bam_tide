@@ -403,58 +403,87 @@ fn main() -> Result<()> {
 
     println!("Writing outfiles");
 
-    let features = match args.quant_mode {
+    match args.quant_mode {
         QuantMode::Gene => {
-            //let names = idx.gene_names();
-            IndexedGenes::from_names(&idx.gene_names())
-        },
-        QuantMode::Transcript => { 
-            //let names = idx.transcript_names();
-            IndexedGenes::from_names(&idx.transcript_names())
-        },
-    };
-    merged_report.stop_single_processor_time();
+            let features = GeneFeatureIndex::new(&idx);
 
-    
+            if args.split_intronic {
+                merged.finalize_for_export(args.min_cell_counts, &features);
 
-    if arg.split_intronic{
-        // 1) Compute passing cells ONCE from the real data (merged)
-        let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
-        // 2) Apply to BOTH datasets
-        merged.restrict_to_cells(&pass);
-        merged_intron.restrict_to_cells(&pass);
-        merged_report.stop_multi_processor_time();
-        
-        println!("Writing matrix files");
-        let _ = merged.write_sparse(&args.outpath, &features, 0);
-        println!("Writing intronic matrix files");
-        let _ = merged_intron.write_sparse(
-            &add_suffix(&args.outpath, "_intronic"),
-            &features,
-            0,
-        );
-    }else {
-        merged.merge( merged_intron );
-        let pass = merged.passing_cell_set_by_umi(args.min_cell_counts);
-        merged.restrict_to_cells(&pass);
 
-        merged_report.stop_multi_processor_time();
+                let pass: std::collections::HashSet<u64> =
+                    merged.export_cell_ids().iter().copied().collect();
+                merged_intron.finalize_for_cells( &pass, &features);
 
-        println!("Writing matrix files");
-        let _ = merged.write_sparse(&args.outpath, &features, 0);
+                merged_report.stop_multi_processor_time();
 
+                println!("Writing matrix files");
+                merged
+                    .write_sparse(&args.outpath, &features)
+                    .context("writing gene matrix")?;
+
+                println!("Writing intronic matrix files");
+                merged_intron
+                    .write_sparse(&add_suffix(&args.outpath, "_intronic"), &features)
+                    .context("writing intronic gene matrix")?;
+            } else {
+                merged.merge(&merged_intron);
+                merged.finalize_for_export(args.min_cell_counts, &features);
+
+                merged_report.stop_multi_processor_time();
+
+                println!("Writing matrix files");
+                merged
+                    .write_sparse(&args.outpath, &features)
+                    .context("writing gene matrix")?;
+            }
+        }
+
+        QuantMode::Transcript => {
+            let features = TranscriptFeatureIndex::new(&idx);
+
+            if args.split_intronic {
+                merged.finalize_for_export(args.min_cell_counts, &features);
+                
+                let pass: std::collections::HashSet<u64> =
+                    merged.export_cell_ids().iter().copied().collect();
+                merged_intron.finalize_for_cells( &pass, &features);
+
+                merged_report.stop_multi_processor_time();
+
+                println!("Writing matrix files");
+                merged
+                    .write_sparse(&args.outpath, &features)
+                    .context("writing transcript matrix")?;
+
+                println!("Writing intronic matrix files");
+                merged_intron
+                    .write_sparse(&add_suffix(&args.outpath, "_intronic"), &features)
+                    .context("writing intronic transcript matrix")?;
+            } else {
+                merged.merge(&merged_intron);
+                merged.finalize_for_export(args.min_cell_counts, &features);
+
+                merged_report.stop_multi_processor_time();
+
+                println!("Writing matrix files");
+                merged
+                    .write_sparse(&args.outpath, &features)
+                    .context("writing transcript matrix")?;
+            }
+        }
     }
 
     merged_report.stop_file_io_time();
 
-    println!("{merged_report}"); 
+    println!("{merged_report}");
 
     let log_str = format!("{merged_report}");
     let log_path = args.outpath.with_extension("log");
     let mut file = File::create(&log_path)
-        .expect("failed to create log file");
+        .with_context(|| format!("failed to create log file {}", log_path.display()))?;
     file.write_all(log_str.as_bytes())
-        .expect("failed to write log file");
+        .with_context(|| format!("failed to write log file {}", log_path.display()))?;
 
     Ok(())
 }
