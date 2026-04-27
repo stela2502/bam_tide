@@ -48,7 +48,7 @@ use rayon::prelude::*;
 use rust_htslib::bam::{Read, Reader, Record};
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 //use std::collections::HashSet;
 
 use bam_tide::core::ref_block::record_to_blocks;
@@ -187,7 +187,7 @@ struct OptionalSnp {
     index: SnpIndex,
 }
 
-fn aux_tag_str<'a>(rec: &'a Record, tag: [u8; 2]) -> Option<&'a str> {
+fn aux_tag_str(rec: &Record, tag: [u8; 2]) -> Option<&str> {
     use rust_htslib::bam::record::Aux;
     match rec.aux(&tag).ok()? {
         Aux::String(s) => Some(s),
@@ -428,8 +428,7 @@ fn main() -> Result<()> {
             let mut read = AlignedRead::from_record(&rec, chr_id);
 
             if let Some(genome) = &genome && !args.no_genome_refine {
-                    read.refine_against_genome(genome, RefineOptions::default());
-                }
+                read.refine_against_genome(genome, RefineOptions::default());
             }
 
             Some(read)
@@ -454,8 +453,7 @@ fn main() -> Result<()> {
 
         n_seen += 1;
         if let Some(maxr) = args.max_reads && n_seen >= maxr {
-                break;
-            }
+            break;
         }
 
         if jobs.len() >= CHUNK {
@@ -655,7 +653,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
+fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| std::path::Path::new(""));
     let stem = path.file_stem().unwrap().to_string_lossy();
     let ext = path.extension().map(|e| e.to_string_lossy());

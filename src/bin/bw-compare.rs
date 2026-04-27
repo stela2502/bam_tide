@@ -83,8 +83,8 @@ fn main() -> Result<()> {
     };
 
     // Read chrom lists
-    let py_chroms: Vec<ChromInfo> = py.chroms().iter().cloned().collect();
-    let rs_chroms: Vec<ChromInfo> = rs.chroms().iter().cloned().collect();
+    let py_chroms: Vec<ChromInfo> = py.chroms().to_vec();
+    let rs_chroms: Vec<ChromInfo> = rs.chroms().to_vec();
 
     // Build rust chrom lookup (borrowed, no clones)
     let mut rs_map: HashMap<String, u32> = HashMap::new();
@@ -138,18 +138,15 @@ fn main() -> Result<()> {
 
         let _ = writeln!(
             out,
-            "{}",
-            format!(
-                "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
-                chr,
-                n_over_eps,
-                frac_n_over_eps,
-                mean_abs,
-                var_abs,
-                rmse,
-                max_abs,
-                chr_rep.pearson()
-            )
+            "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+            chr,
+            n_over_eps,
+            frac_n_over_eps,
+            mean_abs,
+            var_abs,
+            rmse,
+            max_abs,
+            chr_rep.pearson()
         );
 
         total.merge(&chr_rep);
@@ -157,17 +154,14 @@ fn main() -> Result<()> {
     let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = total.finish();
     let _ = writeln!(
         out,
-        "{}",
-        format!(
-            "TOTAL\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
-            n_over_eps,
-            frac_n_over_eps,
-            mean_abs,
-            var_abs,
-            rmse,
-            max_abs,
-            total.pearson()
-        )
+        "TOTAL\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+        n_over_eps,
+        frac_n_over_eps,
+        mean_abs,
+        var_abs,
+        rmse,
+        max_abs,
+        total.pearson()
     );
 
     println!("Most divergent bin:\n{:?}", total.max_bin);
@@ -179,7 +173,7 @@ fn bins_from_bigwig(bw: &mut BwReader, chr: &str, chr_len: u32, bin_w: u32) -> R
     let nbins = (chr_len as u64).div_ceil(bin_w as u64) as usize;
     let mut bins = vec![0.0_f64; nbins];
 
-    let mut it = bw
+    let it = bw
         .get_interval(chr, 0, chr_len)
         .with_context(|| format!("intervals {chr}:0-{chr_len}"))?;
 

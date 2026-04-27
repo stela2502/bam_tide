@@ -11,8 +11,6 @@ const GENCODE_BASIC_CHR_GTF_GZ: &str = "https://ftp.ebi.ac.uk/pub/databases/genc
 const GRCH38_FA_URL: &str =
     "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/GRCh38.p14.genome.fa.gz";
 
-const DBSNP_VCF_URL: &str = "https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz";
-
 fn run(cmd: &mut StdCommand) {
     let status = cmd.status().expect("failed to run command");
     assert!(status.success(), "command failed: {:?}", cmd);
@@ -96,15 +94,6 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
     cmd.assert().success();
 }
 
-fn output_nonempty(outdir: &Path) -> bool {
-    if !outdir.exists() {
-        return false;
-    }
-    std::fs::read_dir(outdir)
-        .ok()
-        .and_then(|mut it| it.next())
-        .is_some()
-}
 
 fn ensure_clean_dir(outdir: &Path) -> std::io::Result<()> {
     if outdir.exists() {
@@ -178,7 +167,7 @@ fn bam_quant_manual_real_data_end_to_end() {
     let vcf_chr1 = PathBuf::from("tests/data/chr1_observed_snps.vcf.gz");
 
     // Derived artifacts
-    let subset_bam = cache_dir.join(format!("pbmc_subset_{n_reads}.bam"));
+    let _subset_bam = cache_dir.join(format!("pbmc_subset_{n_reads}.bam"));
     let index_path = cache_dir.join("splice_index_chr1.dat");
 
     // Output

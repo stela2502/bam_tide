@@ -2,7 +2,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::Command;
 
-use tempfile::tempdir;
+//use tempfile::tempdir;
 
 // bigtools read API
 use bigtools::BigWigRead;
@@ -32,6 +32,7 @@ fn run_ok(cmd: &mut Command) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Compute weighted mean value in [start,end) from bigWig.
 /// If no intervals overlap, returns 0.0 (bin is empty).
 fn bw_weighted_mean(
@@ -66,6 +67,7 @@ fn bw_weighted_mean(
     }
 }
 
+#[allow(dead_code)]
 /// Pearson correlation over paired vectors (ignores all-zero case gracefully).
 fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
     let n = x.len();

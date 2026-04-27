@@ -203,6 +203,6 @@ impl CompareReport {
         }
 
         let rho = num / (den_x.sqrt() * den_y.sqrt());
-        rho.max(-1.0).min(1.0)
+        rho.clamp(-1.0, 1.0)
     }
 }
