@@ -49,7 +49,7 @@ use rust_htslib::bam::{Read, Reader, Record};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::collections::HashSet;
+//use std::collections::HashSet;
 
 use bam_tide::core::ref_block::record_to_blocks;
 use bam_tide::index::{GeneFeatureIndex, TranscriptFeatureIndex};
