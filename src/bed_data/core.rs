@@ -265,13 +265,12 @@ impl BedData {
             let chr = String::from_utf8_lossy(name).to_string();
             let len = header.target_len(rid as u32).unwrap() as usize;
 
-            if let Some(allowed) = limit_to {
-                if !allowed.iter().any(|x| x == &chr) {
+            if let Some(allowed) = limit_to
+                && !allowed.iter().any(|x| x == &chr) {
                     continue;
                 }
-            }
 
-            let bins = (len + bin_width - 1) / bin_width;
+            let bins = len.div_ceil(bin_width);
             result.push((chr, len, total_bins));
             total_bins += bins;
         }
@@ -311,9 +310,9 @@ impl BedData {
 
     pub fn write_bedgraph(&self, file_path: &str) -> std::io::Result<()> {
         let mut file = File::create(file_path)?;
-        let mut iter = DataIter::new(self);
+        let iter = DataIter::new(self);
 
-        while let Some(values) = iter.next() {
+        for values in iter {
             writeln!(
                 file,
                 "{}\t{}\t{}\t{}",

@@ -55,7 +55,7 @@ impl<'a> Iterator for DataIter<'a> {
                             .min(*size)
                             .try_into()
                             .unwrap(),
-                        value: val as f32,
+                        value: val,
                     },
                 );
 

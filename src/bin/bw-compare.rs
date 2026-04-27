@@ -83,8 +83,8 @@ fn main() -> Result<()> {
     };
 
     // Read chrom lists
-    let py_chroms: Vec<ChromInfo> = py.chroms().iter().map(|s| s.clone()).collect();
-    let rs_chroms: Vec<ChromInfo> = rs.chroms().iter().map(|s| s.clone()).collect();
+    let py_chroms: Vec<ChromInfo> = py.chroms().iter().cloned().collect();
+    let rs_chroms: Vec<ChromInfo> = rs.chroms().iter().cloned().collect();
 
     // Build rust chrom lookup (borrowed, no clones)
     let mut rs_map: HashMap<String, u32> = HashMap::new();
@@ -176,14 +176,14 @@ fn main() -> Result<()> {
 
 /// Create a binned representation of a BigWig chromosome
 fn bins_from_bigwig(bw: &mut BwReader, chr: &str, chr_len: u32, bin_w: u32) -> Result<Vec<f64>> {
-    let nbins = ((chr_len as u64 + bin_w as u64 - 1) / bin_w as u64) as usize;
+    let nbins = (chr_len as u64).div_ceil(bin_w as u64) as usize;
     let mut bins = vec![0.0_f64; nbins];
 
     let mut it = bw
         .get_interval(chr, 0, chr_len)
         .with_context(|| format!("intervals {chr}:0-{chr_len}"))?;
 
-    while let Some(iv) = it.next() {
+    for iv in it {
         let iv = iv.unwrap();
         let mut s = iv.start;
         let e = iv.end.min(chr_len);

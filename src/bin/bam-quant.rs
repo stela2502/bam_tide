@@ -427,8 +427,7 @@ fn main() -> Result<()> {
         let aligned = if genome.is_some() || snp.is_some() {
             let mut read = AlignedRead::from_record(&rec, chr_id);
 
-            if let Some(genome) = &genome {
-                if !args.no_genome_refine {
+            if let Some(genome) = &genome && !args.no_genome_refine {
                     read.refine_against_genome(genome, RefineOptions::default());
                 }
             }
@@ -454,8 +453,7 @@ fn main() -> Result<()> {
         });
 
         n_seen += 1;
-        if let Some(maxr) = args.max_reads {
-            if n_seen >= maxr {
+        if let Some(maxr) = args.max_reads && n_seen >= maxr {
                 break;
             }
         }
