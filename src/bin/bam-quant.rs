@@ -1,51 +1,71 @@
 // src/bin/bam-quant.rs
 //
-// Quantify a 10x-style BAM against a splice index (GTF-derived) into scdata.
+// Quantify a 10x-style BAM against a splice index (GTF-derived) into scdata,
+// with optional genome-refined read cleanup and optional SNP ref/alt side-channel.
 //
 // Pipeline:
-// 1) Stream BAM -> collect jobs (cell_u64, umi_u64, spliced_read, span)
-// 2) Rayon over chunks -> local Scdata + MappingInfo
-// 3) Merge locals into one Scdata + MappingInfo
+// 1) Load splice index
+// 2) Optionally load genome FASTA
+// 3) Optionally load SNP VCF
+// 4) Stream BAM:
+//      - collect CB/UB
+//      - build AlignedRead if genome and/or VCF were supplied
+//      - optionally refine AlignedRead against Genome
+//      - build SplicedRead from the BAM record for gene/transcript quantification
+//        (or from refined AlignedRead once that conversion exists)
+//      - keep optional AlignedRead for SNP matching
+// 5) Rayon over chunks:
+//      - normal gene/transcript quantification
+//      - optional SNP ref/alt quantification
+// 6) Export:
+//      - normal gene/transcript 10x-style matrix
+//      - optional intronic matrix
+//      - optional SNP ref/alt matrices
 //
-// Assumptions (adjust if your crate differs):
-// - Tags: CB (cell barcode), UB (UMI). CB may end with "-1" etc.
-// - record_to_blocks(&Record) exists and returns Vec<RefBlock> 0-based half-open.
-// - SpliceIndex has:
-//     - transcripts: Vec<Transcript>
-//     - chrom_names or equivalent to build chr_name -> chr_id mapping
-//     - candidates_for_span_union(chr_id, start0, end0) -> Vec<TranscriptId>
-// - Transcript has: gene_id: usize and match_spliced_read(&SplicedRead, MatchOptions) -> MatchHit
-// - Strand enum has Plus/Minus (or similar)
-// - MappingInfo has fields ok_reads, pcr_duplicates, local_dup, and ideally a merge method.
-//   If no merge method exists, see `merge_mapping_info_fallback()` below.
+// Important:
+// Genome refinement is an addition to the normal quantification path, not a separate mode.
+// SNPs are collected as a side-channel when --vcf is supplied.
+//
+// Expected optional usage:
+//   bam-quant \
+//     --quant-mode transcript \
+//     --bam possorted_genome_bam.bam \
+//     --index splice.idx \
+//     --genome genome.fa \
+//     --vcf variants.vcf.gz \
+//     --outpath quant_out
+//
+// This writes:
+//   quant_out/
+//   quant_out_ref/
+//   quant_out_alt/
+// and optionally:
+//   quant_out_intronic/
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 use rust_htslib::bam::{Read, Reader, Record};
-use std::path::PathBuf;
-
-use scdata::cell_data::GeneUmiHash;
-use scdata::{IndexedGenes, MatrixValueType, Scdata};
-
-use mapping_info::MappingInfo;
-
-use int_to_str::int_to_str::IntToStr;
-
-// for the log file...
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
+use std::collections::HashSet;
 
-const CHUNK: usize = 2_000_000;
+use bam_tide::core::ref_block::record_to_blocks;
+use bam_tide::index::{GeneFeatureIndex, TranscriptFeatureIndex};
 
-// ---- Your splice index / transcript-matching crate ----
-// Adjust these paths to your actual crate/module names.
 use gtf_splice_index::types::RefBlock;
 use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Strand};
 
-// ---- Your ref-block conversion ----
-// Adjust these paths to where RefBlock + record_to_blocks live in bam_tide.
-use bam_tide::core::ref_block::record_to_blocks;
+use int_to_str::int_to_str::IntToStr;
+use mapping_info::MappingInfo;
+
+use scdata::cell_data::GeneUmiHash;
+use scdata::{MatrixValueType, Scdata};
+
+use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex, VcfReadOptions };
+
+const CHUNK: usize = 2_000_000;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum QuantMode {
@@ -56,34 +76,33 @@ pub enum QuantMode {
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "bam-quant",
-    about = "Quantify 10x BAM against splice index into scdata"
+    about = "Quantify 10x BAM against splice index into scdata, optionally collecting SNP ref/alt matrices"
 )]
-
-
 pub struct QuantCli {
     /// Input BAM (10x / CellRanger BAM)
     #[arg(long, short)]
-    pub bam: std::path::PathBuf,
+    pub bam: PathBuf,
 
     /// Splice index path (built from GTF beforehand)
     #[arg(long, short)]
-    pub index: std::path::PathBuf,
+    pub index: PathBuf,
 
-    /// Outpath for the 10x mmx formated outfiles
+    /// Outpath for the 10x mtx-formatted outfiles
     #[arg(long, short)]
-    pub outpath: std::path::PathBuf,
+    pub outpath: PathBuf,
 
-    /// Split Intronic from rest
+    /// Split Intronic from rest.
     ///
-    /// This is currently not recommended as exon intron detection seams to be too strict from normal sequencing data
+    /// This is currently not recommended as exon/intron detection seems to be too strict
+    /// for normal sequencing data.
     #[arg(long, short, default_value_t = false)]
-    pub split_intronic: Bool,
+    pub split_intronic: bool,
 
     /// Minimum MAPQ
     #[arg(long, default_value_t = 0)]
     pub min_mapq: u8,
 
-    /// Use only read1 (recommended for 10x; reduces duplicate mate counting noise)
+    /// Use only read1 (recommended for 10x; reduces duplicate mate-counting noise)
     #[arg(long, default_value_t = false)]
     pub read1_only: bool,
 
@@ -102,6 +121,29 @@ pub struct QuantCli {
     /// Min read counts per reported cell (debug/dev)
     #[arg(long, default_value_t = 400)]
     pub min_cell_counts: usize,
+
+    /// Optional reference genome FASTA.
+    ///
+    /// If supplied, BAM-derived AlignedRead objects are refined against the genome.
+    /// This is useful for SNP matching and can also improve downstream splice/transcript
+    /// detection once the refined alignment is used to build the SplicedRead.
+    #[arg(long)]
+    pub genome: Option<PathBuf>,
+
+    /// Optional SNP VCF.
+    ///
+    /// If supplied, SNP ref/alt matrices are written in addition to the normal
+    /// gene/transcript matrix. Requires --genome.
+    #[arg(long)]
+    pub vcf: Option<PathBuf>,
+
+    /// Minimum SNP anchor/support passed to snp_index.match_read().
+    #[arg(long, default_value_t = 20)]
+    pub snp_min_anchor: u32,
+
+    /// Disable genome-based AlignedRead refinement even if --genome is supplied.
+    #[arg(long, default_value_t = false)]
+    pub no_genome_refine: bool,
 
     // ------------------------------
     // MatchOptions exposed to user
@@ -131,10 +173,18 @@ pub struct QuantCli {
 struct Job {
     cell: u64,
     umi: u64,
-    //chr_id: usize,
-    //start0: u32,
-    //end0: u32,
     spliced: SplicedRead,
+
+    /// Refined/cleaned read used for SNP matching.
+    ///
+    /// This is currently created when --genome or --vcf is supplied.
+    /// If --genome is supplied and --no-genome-refine is not set, it is refined
+    /// against the reference genome before being stored here.
+    aligned: Option<AlignedRead>,
+}
+
+struct OptionalSnp {
+    index: SnpIndex,
 }
 
 fn aux_tag_str<'a>(rec: &'a Record, tag: [u8; 2]) -> Option<&'a str> {
@@ -163,6 +213,12 @@ fn dna_to_u64(seq: &str) -> Option<u64> {
 }
 
 /// Build SplicedRead + union span [start0, end0) from a BAM record.
+///
+/// This is still the canonical splice path.
+/// The optional genome-refined AlignedRead is currently used for SNP matching.
+/// Once snp-index exposes a stable "AlignedRead -> RefBlock/SplicedRead" conversion,
+/// this function can be mirrored with a refined-read based version to make the
+/// transcript matching directly benefit from the cleaned alignment representation.
 fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u32, u32)> {
     let blocks: Vec<RefBlock> = record_to_blocks(rec);
     if blocks.is_empty() {
@@ -180,32 +236,11 @@ fn record_to_spliced_read(rec: &Record, chr_id: usize) -> Option<(SplicedRead, u
     Some((spliced, start0, end0))
 }
 
-
-/*
-/// Build a chr_name -> chr_id lookup.
-///
-/// Adjust this if your SpliceIndex already provides a method, e.g.
-/// `idx.chr_name_to_id(&str) -> Option<usize>`.
-fn build_chr_map(idx: &SpliceIndex) -> std::collections::HashMap<String, usize> {
-    // Common patterns:
-    // - idx.chr_names: Vec<String>
-    // - idx.chrom_names: Vec<String>
-    //
-    // Change the field name here to match your SpliceIndex.
-    let names: &Vec<String> = &idx.chr_names;
-
-    let mut map = std::collections::HashMap::with_capacity(names.len());
-    for (i, n) in names.iter().enumerate() {
-        map.insert(n.clone(), i);
-    }
-    map
-}*/
-
 fn main() -> Result<()> {
     let args = QuantCli::parse();
 
     if args.threads > 0 {
-        // If build_global fails (already initialized), ignore.
+        // If build_global fails because Rayon was already initialized, ignore.
         let _ = rayon::ThreadPoolBuilder::new()
             .num_threads(args.threads)
             .build_global();
@@ -215,8 +250,68 @@ fn main() -> Result<()> {
         .with_context(|| format!("reading index {}", args.index.display()))?;
     println!("{idx}");
 
-    //let chr_map = build_chr_map(&idx);
     let chr_map = build_chr_map_fuzzy(&idx);
+
+    let genome = match &args.genome {
+        Some(path) => Some(
+            Genome::from_fasta(path)
+                .with_context(|| format!("reading genome FASTA {}", path.display()))?,
+        ),
+        None => None,
+    };
+
+    if args.vcf.is_some() && genome.is_none() {
+        return Err(anyhow!("--vcf requires --genome"));
+    }
+
+    let mut reader = Reader::from_path(&args.bam)
+        .with_context(|| format!("bam file could not be read: {}", args.bam.display()))?;
+    let header = reader.header().clone();
+
+    let chr_names: Vec<String> = (0..header.target_count())
+        .map(|i| {
+            std::str::from_utf8(header.tid2name(i))
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+
+    let chr_lengths: Vec<u32> = (0..header.target_count())
+        .map(|i| header.target_len(i).unwrap_or(0) as u32)
+        .collect();
+
+    let vcf_opts = VcfReadOptions::default();
+    let snp = match &args.vcf {
+        Some(path) => {
+            println!("Loading SNP index");
+            let snp_index = SnpIndex::from_vcf_path(
+                path,
+                chr_names.clone(),
+                chr_lengths.clone(),
+                10_000,
+                &vcf_opts,
+            )
+            .with_context(|| format!("reading SNP VCF {}", path.display()))?;
+
+            eprintln!("{snp_index}");
+
+            Some(OptionalSnp { index: snp_index })
+        }
+        None => None,
+    };
+
+    if genome.is_some() {
+        eprintln!(
+            "[INFO] genome refinement enabled: reads will be represented as AlignedRead and refined before SNP matching"
+        );
+        eprintln!(
+            "[INFO] this cleanup layer can also be used to improve splice/transcript matching once SplicedRead construction from refined AlignedRead is enabled"
+        );
+    }
+
+    if snp.is_some() {
+        eprintln!("[INFO] SNP side-channel enabled: writing additional ref/alt matrices");
+    }
 
     let match_opts = MatchOptions {
         require_strand: args.require_strand,
@@ -226,9 +321,7 @@ fn main() -> Result<()> {
         allowed_intronic_gap_size: args.allowed_intronic_gap_size,
     };
 
-    let mut reader = Reader::from_path(&args.bam)
-        .with_context(|| format!("bam file could not be read: {}", args.bam.display()))?;
-    let header = reader.header().clone();
+
 
     // ----------------------------
     // Stage 1: stream BAM -> jobs
@@ -237,10 +330,14 @@ fn main() -> Result<()> {
     let mut n_seen: usize = 0;
 
     // ----------------------------
-    //    merge partial results
+    // Merge partial results
     // ----------------------------
     let mut merged = Scdata::new(1, MatrixValueType::Real);
     let mut merged_intron = Scdata::new(1, MatrixValueType::Real);
+
+    let mut merged_snp_ref = Scdata::new(1, MatrixValueType::Real);
+    let mut merged_snp_alt = Scdata::new(1, MatrixValueType::Real);
+
     let mut merged_report = MappingInfo::new(
         None,
         args.min_mapq as f32,
@@ -249,17 +346,19 @@ fn main() -> Result<()> {
     merged_report.start_counter();
 
     #[cfg(debug_assertions)]
-    let mut i = 0;
+    let mut i = 0usize;
+
     for r in reader.records() {
         #[cfg(debug_assertions)]
         {
             i += 1;
             if i - n_seen > 1_000_0000 {
                 panic!(
-                    "We have found more than 1 mio reads that did not pass initial filters.\n read {i}, processed {n_seen},  Wrong gene model?\n{merged_report}"
+                    "We have found more than 1 mio reads that did not pass initial filters.\n read {i}, processed {n_seen}, Wrong gene model?\n{merged_report}"
                 );
             }
         }
+
         let rec = r.context("BAM read error")?;
 
         if rec.is_unmapped() {
@@ -271,7 +370,7 @@ fn main() -> Result<()> {
             continue;
         }
         if rec.is_secondary() || rec.is_supplementary() {
-            merged_report.report("secondary or supplemantary");
+            merged_report.report("secondary or supplementary");
             continue;
         }
         if args.read1_only && !rec.is_first_in_template() {
@@ -298,18 +397,25 @@ fn main() -> Result<()> {
 
         let cell = match dna_to_u64(cb) {
             Some(v) => v,
-            None => continue,
+            None => {
+                merged_report.report("invalid CB");
+                continue;
+            }
         };
         let umi = match dna_to_u64(ub) {
             Some(v) => v,
-            None => continue,
+            None => {
+                merged_report.report("invalid UB");
+                continue;
+            }
         };
 
         let tid = rec.tid();
         if tid < 0 {
-            merged_report.report("tid below 1");
+            merged_report.report("tid below 0");
             continue;
         }
+
         let chr_name = std::str::from_utf8(header.tid2name(tid as u32))
             .context("Invalid chromosome name in BAM header")?;
 
@@ -317,22 +423,40 @@ fn main() -> Result<()> {
             Some(&id) => id,
             None => {
                 merged_report.report("contig not in index");
-                continue; // contig not in splice index
+                continue;
             }
+        };
+
+        // Optional genome/SNP read representation.
+        // If --genome was supplied, this becomes the cleaned/refined read representation.
+        // If only --vcf were supplied, we reject above because SNP matching needs genome.
+        let aligned = if genome.is_some() || snp.is_some() {
+            let mut read = AlignedRead::from_record(&rec, chr_id);
+
+            if let Some(genome) = &genome {
+                if !args.no_genome_refine {
+                    read.refine_against_genome(genome, RefineOptions::default());
+                }
+            }
+
+            Some(read)
+        } else {
+            None
         };
 
         let (spliced, _start0, _end0) = match record_to_spliced_read(&rec, chr_id) {
             Some(v) => v,
-            None => continue,
+            None => {
+                merged_report.report("no ref blocks");
+                continue;
+            }
         };
 
         jobs.push(Job {
             cell,
             umi,
-            //chr_id,
-            //start0,
-            //end0,
             spliced,
+            aligned,
         });
 
         n_seen += 1;
@@ -350,20 +474,28 @@ fn main() -> Result<()> {
                 QuantMode::Gene => process_chunk_gene(
                     &jobs,
                     &idx,
+                    snp.as_ref(),
                     match_opts,
                     &mut merged,
                     &mut merged_intron,
+                    &mut merged_snp_ref,
+                    &mut merged_snp_alt,
                     &mut merged_report,
                     args.min_mapq,
+                    args.snp_min_anchor,
                 )?,
                 QuantMode::Transcript => process_chunk_transcript(
                     &jobs,
                     &idx,
+                    snp.as_ref(),
                     match_opts,
                     &mut merged,
                     &mut merged_intron,
+                    &mut merged_snp_ref,
+                    &mut merged_snp_alt,
                     &mut merged_report,
                     args.min_mapq,
+                    args.snp_min_anchor,
                 )?,
             }
 
@@ -372,32 +504,41 @@ fn main() -> Result<()> {
     }
 
     // ----------------------------------------
-    // Stage 2: parallel chunks -> partial scdata
+    // Stage 2: final chunk
     // ----------------------------------------
-
-    if jobs.len() > 0 {
+    if !jobs.is_empty() {
         println!("Processing final chunk of size {}", jobs.len());
         merged_report.stop_file_io_time();
+
         match args.quant_mode {
             QuantMode::Gene => process_chunk_gene(
                 &jobs,
                 &idx,
+                snp.as_ref(),
                 match_opts,
                 &mut merged,
                 &mut merged_intron,
+                &mut merged_snp_ref,
+                &mut merged_snp_alt,
                 &mut merged_report,
                 args.min_mapq,
+                args.snp_min_anchor,
             )?,
             QuantMode::Transcript => process_chunk_transcript(
                 &jobs,
                 &idx,
+                snp.as_ref(),
                 match_opts,
                 &mut merged,
                 &mut merged_intron,
+                &mut merged_snp_ref,
+                &mut merged_snp_alt,
                 &mut merged_report,
                 args.min_mapq,
+                args.snp_min_anchor,
             )?,
         }
+
         jobs.clear();
     }
 
@@ -410,21 +551,22 @@ fn main() -> Result<()> {
             if args.split_intronic {
                 merged.finalize_for_export(args.min_cell_counts, &features);
 
-
                 let pass: std::collections::HashSet<u64> =
                     merged.export_cell_ids().iter().copied().collect();
-                merged_intron.finalize_for_cells( &pass, &features);
+                merged_intron.finalize_for_cells(&pass, &features);
 
                 merged_report.stop_multi_processor_time();
 
                 println!("Writing matrix files");
                 merged
                     .write_sparse(&args.outpath, &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing gene matrix")?;
 
                 println!("Writing intronic matrix files");
                 merged_intron
                     .write_sparse(&add_suffix(&args.outpath, "_intronic"), &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing intronic gene matrix")?;
             } else {
                 merged.merge(&merged_intron);
@@ -435,6 +577,7 @@ fn main() -> Result<()> {
                 println!("Writing matrix files");
                 merged
                     .write_sparse(&args.outpath, &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing gene matrix")?;
             }
         }
@@ -444,21 +587,23 @@ fn main() -> Result<()> {
 
             if args.split_intronic {
                 merged.finalize_for_export(args.min_cell_counts, &features);
-                
+
                 let pass: std::collections::HashSet<u64> =
                     merged.export_cell_ids().iter().copied().collect();
-                merged_intron.finalize_for_cells( &pass, &features);
+                merged_intron.finalize_for_cells(&pass, &features);
 
                 merged_report.stop_multi_processor_time();
 
                 println!("Writing matrix files");
                 merged
                     .write_sparse(&args.outpath, &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing transcript matrix")?;
 
                 println!("Writing intronic matrix files");
                 merged_intron
                     .write_sparse(&add_suffix(&args.outpath, "_intronic"), &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing intronic transcript matrix")?;
             } else {
                 merged.merge(&merged_intron);
@@ -469,8 +614,43 @@ fn main() -> Result<()> {
                 println!("Writing matrix files");
                 merged
                     .write_sparse(&args.outpath, &features)
+                    .map_err(|e| anyhow!(e))
                     .context("writing transcript matrix")?;
             }
+        }
+    }
+
+    if let Some(snp) = &snp {
+        println!("Writing SNP ref/alt matrix files");
+
+        // Keep SNP matrices aligned to the same cells as the main matrix.
+        // This uses the main exported cells as whitelist.
+        let pass: std::collections::HashSet<u64> =
+            merged.export_cell_ids().iter().copied().collect();
+
+
+
+
+        if merged_snp_ref.is_empty(){
+            eprintln!("No SNPs collected");
+        }else {
+
+
+            merged_snp_alt.finalize_for_cells(&pass, &snp.index);
+
+            merged_snp_ref.retain_features( &merged_snp_alt.observed_feature_ids() );
+
+            merged_snp_ref.finalize_for_cells(&pass, &snp.index); 
+
+            merged_snp_alt
+                .write_sparse(&add_suffix(&args.outpath, "_alt"), &snp.index)
+                .map_err(|e| anyhow!(e))
+                .context("writing SNP alt matrix")?;    
+
+            merged_snp_ref
+                .write_sparse(&add_suffix(&args.outpath, "_ref"), &snp.index)
+                .map_err(|e| anyhow!(e))
+                .context("writing SNP ref matrix")?;
         }
     }
 
@@ -501,113 +681,222 @@ fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
     parent.join(new_name)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_chunk_gene(
     jobs: &[Job],
     idx: &SpliceIndex,
+    snp: Option<&OptionalSnp>,
     match_opts: MatchOptions,
     merged: &mut Scdata,
     merged_intron: &mut Scdata,
+    merged_snp_ref: &mut Scdata,
+    merged_snp_alt: &mut Scdata,
     merged_report: &mut MappingInfo,
     min_mapq: u8,
+    snp_min_anchor: u32,
 ) -> Result<()> {
     let threads = rayon::current_num_threads().max(1);
     let chunk_size = (jobs.len() / threads).max(10_000);
 
-    let partials: Vec<(Scdata, Scdata, MappingInfo)> = jobs
+    let partials: Vec<(Scdata, Scdata, Scdata, Scdata, MappingInfo)> = jobs
         .par_chunks(chunk_size)
         .map(|chunk| {
             let mut sc = Scdata::new(1, MatrixValueType::Real);
             let mut sc_intron = Scdata::new(1, MatrixValueType::Real);
+            let mut sc_snp_ref = Scdata::new(1, MatrixValueType::Real);
+            let mut sc_snp_alt = Scdata::new(1, MatrixValueType::Real);
+
             let mut rep = MappingInfo::new(None, min_mapq as f32, usize::MAX);
 
-            for job in chunk { 
+            for job in chunk {
                 let gene_hits = idx.match_genes(&job.spliced, match_opts);
                 if gene_hits.is_empty() {
                     rep.report("no hit");
-                    continue;
-                }
-
-                let g = &gene_hits[0];
-                rep.report(g.best_hit.class.to_string());
-
-                let gid = g.gene_id; // (GeneId is usize in your code)
-                //println!("cell: {}",job.cell);
-
-                if g.best_hit.class == MatchClass::Intronic {
-                    sc_intron.try_insert(&job.cell, GeneUmiHash(gid, job.umi), 1.0, &mut rep);
                 } else {
-                    sc.try_insert(&job.cell, GeneUmiHash(gid, job.umi), 1.0, &mut rep);
+                    let g = &gene_hits[0];
+                    rep.report(g.best_hit.class.to_string());
+
+                    let gid = g.gene_id;
+
+                    if g.best_hit.class == MatchClass::Intronic {
+                        sc_intron.try_insert(
+                            &job.cell,
+                            GeneUmiHash(gid as u64, job.umi),
+                            1.0,
+                            &mut rep,
+                        );
+                    } else {
+                        sc.try_insert(
+                            &job.cell,
+                            GeneUmiHash(gid as u64, job.umi),
+                            1.0,
+                            &mut rep,
+                        );
+                    }
                 }
+
+                add_snp_hits(
+                    snp,
+                    &job.aligned,
+                    job.cell,
+                    job.umi,
+                    snp_min_anchor,
+                    &mut sc_snp_ref,
+                    &mut sc_snp_alt,
+                    &mut rep,
+                );
             }
 
-            (sc, sc_intron, rep)
+            (sc, sc_intron, sc_snp_ref, sc_snp_alt, rep)
         })
         .collect();
 
     merged_report.stop_multi_processor_time();
 
-    for (sc, sc_intron, rep) in partials {
+    for (sc, sc_intron, sc_snp_ref, sc_snp_alt, rep) in partials {
         merged.merge(&sc);
         merged_intron.merge(&sc_intron);
+        merged_snp_ref.merge(&sc_snp_ref);
+        merged_snp_alt.merge(&sc_snp_alt);
         merged_report.merge(&rep);
     }
+
     merged_report.stop_single_processor_time();
 
     Ok(())
 }
 
-
+#[allow(clippy::too_many_arguments)]
 fn process_chunk_transcript(
     jobs: &[Job],
     idx: &SpliceIndex,
+    snp: Option<&OptionalSnp>,
     match_opts: MatchOptions,
     merged: &mut Scdata,
     merged_intron: &mut Scdata,
+    merged_snp_ref: &mut Scdata,
+    merged_snp_alt: &mut Scdata,
     merged_report: &mut MappingInfo,
     min_mapq: u8,
+    snp_min_anchor: u32,
 ) -> Result<()> {
     let threads = rayon::current_num_threads().max(1);
     let chunk_size = (jobs.len() / threads).max(10_000);
 
-    let partials: Vec<(Scdata, Scdata, MappingInfo)> = jobs
+    let partials: Vec<(Scdata, Scdata, Scdata, Scdata, MappingInfo)> = jobs
         .par_chunks(chunk_size)
         .map(|chunk| {
             let mut sc = Scdata::new(1, MatrixValueType::Real);
             let mut sc_intron = Scdata::new(1, MatrixValueType::Real);
+            let mut sc_snp_ref = Scdata::new(1, MatrixValueType::Real);
+            let mut sc_snp_alt = Scdata::new(1, MatrixValueType::Real);
+
             let mut rep = MappingInfo::new(None, min_mapq as f32, usize::MAX);
 
             for job in chunk {
                 let tx_hits = idx.match_transcripts(&job.spliced, match_opts);
                 if tx_hits.is_empty() {
                     rep.report("no hit");
-                    continue;
-                }
-
-                let h = &tx_hits[0];
-                rep.report(h.hit.class.to_string());
-
-                let tid = h.transcript_id;
-
-                if h.hit.class == MatchClass::Intronic {
-                    sc_intron.try_insert(&job.cell, GeneUmiHash(tid, job.umi), 1.0, &mut rep);
                 } else {
-                    sc.try_insert(&job.cell, GeneUmiHash(tid, job.umi), 1.0, &mut rep);
+                    let h = &tx_hits[0];
+                    rep.report(h.hit.class.to_string());
+
+                    let tid = h.transcript_id;
+
+                    if h.hit.class == MatchClass::Intronic {
+                        sc_intron.try_insert(
+                            &job.cell,
+                            GeneUmiHash(tid as u64, job.umi),
+                            1.0,
+                            &mut rep,
+                        );
+                    } else {
+                        sc.try_insert(
+                            &job.cell,
+                            GeneUmiHash(tid as u64, job.umi),
+                            1.0,
+                            &mut rep,
+                        );
+                    }
                 }
+
+                add_snp_hits(
+                    snp,
+                    &job.aligned,
+                    job.cell,
+                    job.umi,
+                    snp_min_anchor,
+                    &mut sc_snp_ref,
+                    &mut sc_snp_alt,
+                    &mut rep,
+                );
             }
 
-            (sc, sc_intron, rep)
+            (sc, sc_intron, sc_snp_ref, sc_snp_alt, rep)
         })
         .collect();
+
     merged_report.stop_multi_processor_time();
 
-    for (sc, sc_intron, rep) in partials {
+    for (sc, sc_intron, sc_snp_ref, sc_snp_alt, rep) in partials {
         merged.merge(&sc);
         merged_intron.merge(&sc_intron);
+        merged_snp_ref.merge(&sc_snp_ref);
+        merged_snp_alt.merge(&sc_snp_alt);
         merged_report.merge(&rep);
     }
+
     merged_report.stop_single_processor_time();
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_snp_hits(
+    snp: Option<&OptionalSnp>,
+    aligned: &Option<AlignedRead>,
+    cell: u64,
+    umi: u64,
+    snp_min_anchor: u32,
+    sc_snp_ref: &mut Scdata,
+    sc_snp_alt: &mut Scdata,
+    rep: &mut MappingInfo,
+) {
+    let Some(snp) = snp else {
+        return;
+    };
+
+    let Some(read) = aligned else {
+        rep.report("snp requested but no aligned read");
+        return;
+    };
+
+    let hits = snp.index.match_read(read, snp_min_anchor.try_into().unwrap());
+
+    if hits.ref_ids.is_empty() && hits.alt_ids.is_empty() {
+        rep.report("no snp hit");
+        return;
+    }
+
+    for snp_id in hits.ref_ids {
+        sc_snp_ref.try_insert(
+            &cell,
+            GeneUmiHash(snp_id as u64, umi),
+            1.0,
+            rep,
+        );
+    }
+
+    for snp_id in hits.alt_ids {
+        sc_snp_alt.try_insert(
+            &cell,
+            GeneUmiHash(snp_id as u64, umi),
+            1.0,
+            rep,
+        );
+    }
+
+    rep.report("snp hit");
 }
 
 fn build_chr_map_fuzzy(idx: &SpliceIndex) -> std::collections::HashMap<String, usize> {

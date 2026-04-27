@@ -2,6 +2,7 @@
 
 use gtf_splice_index::SpliceIndex;
 use scdata::FeatureIndex;
+use std::collections::HashMap;
 
 pub struct GeneFeatureIndex<'a> {
     idx: &'a SpliceIndex,

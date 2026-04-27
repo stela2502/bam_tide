@@ -15,11 +15,41 @@ This repository currently ships two main command-line tools:
 
 ## Installation
 
-### Option 1: Build from source (recommended)
+### Option 1: Install via Bioconda (recommended)
+
+Conda currently installs a working ``bam-coverage`` (including ``bw-compare``), the ``bam-quant`` is only worked on in the github version.
+
+`bam-tide` is available as a prebuilt package via Bioconda and can be installed using **micromamba**, **mamba**, or **conda**.
+
+```bash
+micromamba create -n bam-tide -c conda-forge -c bioconda bam-tide
+micromamba activate bam-tide
+```
+
+Or with conda:
+
+```bash
+conda create -n bam-tide -c conda-forge -c bioconda bam-tide
+conda activate bam-tide
+```
+
+> Note: The `conda-forge` channel is required, as Bioconda packages depend on it.
+
+After installation, the tools are available directly:
+
+```bash
+bam-coverage --help
+bw-compare --help
+```
+
+---
+
+### Option 2: Build from source
 
 Prerequisites:
-- Rust toolchain (stable) via `rustup`
-- A C toolchain (for some dependencies) as needed on your system
+
+* Rust toolchain (stable) via `rustup`
+* A C toolchain (for dependencies such as htslib)
 
 ```bash
 git clone https://github.com/stela2502/bam_tide.git
@@ -27,16 +57,40 @@ cd bam_tide
 cargo build --release
 ```
 
-Binaries will be available here:
+Binaries:
 
 ```bash
 ./target/release/bam-coverage
 ./target/release/bw-compare
 ```
 
-### Option 2: Use inside a container (optional)
+---
 
-If you run on HPC and prefer containers, you can build an Apptainer/Singularity image around a release build of these binaries. (A recipe is not included yet—see **Future developments**.)
+### Option 3: Use without activating an environment (advanced)
+
+If you prefer not to activate environments (e.g. in scripts):
+
+```bash
+micromamba run -n bam-tide bam-coverage --help
+```
+
+---
+
+## Optional: Verify installation
+
+```bash
+bam-coverage --version
+bw-compare --version
+```
+
+---
+
+## Minimal example
+
+```bash
+bam-coverage --bam input.unsorted.bam --outfile sample.bw
+```
+
 
 ---
 
