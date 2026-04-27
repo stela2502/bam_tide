@@ -50,7 +50,7 @@ impl<'a> Iterator for DataIter<'a> {
                 let ret = (
                     chr.to_string(),
                     bigtools::Value {
-                        start: start,
+                        start,
                         end: (rel_bin * self.data.bin_width + self.data.bin_width)
                             .min(*size)
                             .try_into()

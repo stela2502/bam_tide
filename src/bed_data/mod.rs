@@ -1,7 +1,7 @@
 // src/bed-data/mod.rs
 
-pub mod bed_data;
+pub mod core;
 
-pub use bed_data::BedData;
-pub use bed_data::Normalize;
-pub use bed_data::Value;
+pub use core::BedData;
+pub use core::Normalize;
+pub use core::Value;

@@ -111,7 +111,7 @@ impl BedData {
 
         let num_bins = genome_info
             .iter()
-            .map(|(_, length, _)| (length + bin_width - 1) / bin_width)
+            .map(|(_, length, _)| length.div_ceil(bin_width) )
             .sum::<usize>();
 
         let coverage_data = vec![0.0_f32; num_bins];
@@ -244,12 +244,12 @@ impl BedData {
     // ============================
 
     pub fn genome_info_to_search(
-        genome_info: &Vec<(String, usize, usize)>,
+        genome_info: &[(String, usize, usize)],
     ) -> HashMap<String, usize> {
         genome_info
             .iter()
             .enumerate()
-            .map(|(index, (name, _, _))| (name.clone(), index))
+            .map(|(index, (name, _, _))| (name.clone(), index) )
             .collect()
     }
 
