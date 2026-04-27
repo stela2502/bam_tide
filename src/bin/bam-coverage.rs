@@ -1,7 +1,7 @@
 // src/bin/bam_coverage.rs
-use clap::Parser;
-use bam_tide::cli::CoverageCli;
 use bam_tide::bed_data::BedData;
+use bam_tide::cli::CoverageCli;
+use clap::Parser;
 
 fn main() {
     let opts = CoverageCli::parse();

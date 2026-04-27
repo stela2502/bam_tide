@@ -1,21 +1,21 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs::File;
 use std::io::Write;
-use std::fmt;
 use std::path::Path;
 
-use rust_htslib::bam::{self, Reader, Read};
 use bigtools::BigWigWrite;
 use bigtools::beddata::BedParserStreamingIterator;
+use rust_htslib::bam::{self, Read, Reader};
 
 use rayon::prelude::*;
 
+use crate::core::ref_block::record_to_blocks;
 use crate::data_iter::DataIter;
 use gtf_splice_index::types::RefBlock; // your new CIGAR-derived blocks
-use crate::core::ref_block::record_to_blocks;
 
-use crate::core::alignment_policy::AlignmentPolicy;
 use crate::cli::CoverageCli;
+use crate::core::alignment_policy::AlignmentPolicy;
 
 use clap::ValueEnum;
 
@@ -60,45 +60,45 @@ impl fmt::Display for BedData {
         writeln!(f, "  Processed reads: {}", self.nreads)?;
         writeln!(f, "  Genome Info:")?;
         for (chr, len, offset) in &self.genome_info {
-            writeln!(f, "    - Chr: {}, Length: {}, Bin offset: {}", chr, len, offset)?;
+            writeln!(
+                f,
+                "    - Chr: {}, Length: {}, Bin offset: {}",
+                chr, len, offset
+            )?;
         }
         Ok(())
     }
 }
 
 impl BedData {
-
     // ============================
     // Initialization (NEW DESIGN)
     // ============================
 
     pub fn from_bam_with_policy(opts: &CoverageCli) -> Result<BedData, String> {
-	    let mut reader = Reader::from_path(&opts.bam)
+        let mut reader = Reader::from_path(&opts.bam)
             .map_err(|e| format!("bam file could not be read: {e:?}"))?;
-	    let header = reader.header().clone();
+        let header = reader.header().clone();
 
-	    let mut bed = BedData::init_from_header_view(
-	        &header,
-	        opts.width as usize,
-	        1,
-	        None,
-	    );
+        let mut bed = BedData::init_from_header_view(&header, opts.width as usize, 1, None);
 
-	    let policy = AlignmentPolicy::from_cli( opts );
+        let policy = AlignmentPolicy::from_cli(opts);
 
-	    for rec in reader.records() {
-	        let rec = rec.map_err(|e| format!("BAM read error: {e:?}"))?;
-	        if !policy.passes_filter(&rec) { continue; }
+        for rec in reader.records() {
+            let rec = rec.map_err(|e| format!("BAM read error: {e:?}"))?;
+            if !policy.passes_filter(&rec) {
+                continue;
+            }
 
-	        let chr = std::str::from_utf8(header.tid2name(rec.tid() as u32))
-                 .map_err(|e| format!("Invalid chromosome name in BAM header: {e:?}"))?;
-	        let blocks = record_to_blocks(&rec);
-	        bed.add_ref_blocks(chr, &blocks);
-	    }
+            let chr = std::str::from_utf8(header.tid2name(rec.tid() as u32))
+                .map_err(|e| format!("Invalid chromosome name in BAM header: {e:?}"))?;
+            let blocks = record_to_blocks(&rec);
+            bed.add_ref_blocks(chr, &blocks);
+        }
 
-	    bed.normalize(&opts.normalize);
-	    Ok(bed)
-	}
+        bed.normalize(&opts.normalize);
+        Ok(bed)
+    }
 
     pub fn init_from_header_view(
         header: &bam::HeaderView,
@@ -135,8 +135,7 @@ impl BedData {
             None => return,
         };
 
-        let (_chrom_name, chrom_length, chrom_offset) =
-            &self.genome_info[chr_id];
+        let (_chrom_name, chrom_length, chrom_offset) = &self.genome_info[chr_id];
 
         self.nreads += 1;
 
@@ -151,14 +150,13 @@ impl BedData {
             }
 
             let start_window = start / self.bin_width;
-            let end_window   = (end - 1) / self.bin_width; // correct half-open handling
+            let end_window = (end - 1) / self.bin_width; // correct half-open handling
 
             for id in start_window..=end_window {
                 let bin_start = id * self.bin_width;
-                let bin_end   = bin_start + self.bin_width;
+                let bin_end = bin_start + self.bin_width;
 
-                let overlap =
-                    (end.min(bin_end)).saturating_sub(start.max(bin_start));
+                let overlap = (end.min(bin_end)).saturating_sub(start.max(bin_start));
 
                 if overlap > 0 {
                     hit_bins.insert(id);
@@ -171,7 +169,6 @@ impl BedData {
             self.coverage_data[index] += 1.0;
         }
     }
-
 
     // ============================
     // Normalization
@@ -247,7 +244,7 @@ impl BedData {
     // ============================
 
     pub fn genome_info_to_search(
-        genome_info: &Vec<(String, usize, usize)>
+        genome_info: &Vec<(String, usize, usize)>,
     ) -> HashMap<String, usize> {
         genome_info
             .iter()
@@ -283,9 +280,9 @@ impl BedData {
     }
 
     pub fn id_for_chr_start(&self, chr: &str, start: usize) -> Option<usize> {
-        self.search.get(chr).map(|id| {
-            self.genome_info[*id].2 + start / self.bin_width
-        })
+        self.search
+            .get(chr)
+            .map(|id| self.genome_info[*id].2 + start / self.bin_width)
     }
 
     pub fn current_chr_for_id(&self, id: usize) -> Option<(String, usize, usize)> {
@@ -320,10 +317,7 @@ impl BedData {
             writeln!(
                 file,
                 "{}\t{}\t{}\t{}",
-                values.0,
-                values.1.start,
-                values.1.end,
-                values.1.value
+                values.0, values.1.start, values.1.end, values.1.value
             )?;
         }
         Ok(())
@@ -332,11 +326,11 @@ impl BedData {
     pub fn write_bigwig(&self, file: &str) -> Result<(), String> {
         let outfile = Path::new(file);
 
-        let chrom_map: HashMap<String, u32> =
-            self.genome_info
-                .iter()
-                .map(|(chrom, len, _)| (chrom.clone(), *len as u32))
-                .collect();
+        let chrom_map: HashMap<String, u32> = self
+            .genome_info
+            .iter()
+            .map(|(chrom, len, _)| (chrom.clone(), *len as u32))
+            .collect();
 
         let mut outb = BigWigWrite::create_file(outfile, chrom_map)
             .map_err(|e| format!("Failed to create BigWig file: {}", e))?;
@@ -359,7 +353,6 @@ impl BedData {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod binning_tests {
@@ -465,10 +458,16 @@ mod binning_tests {
 
         // empty block should be ignored
         // block outside chr entirely should contribute nothing (after clipping)
-        bed.add_ref_blocks("chr1", &[
-            RefBlock { start: 10, end: 10 },
-            RefBlock { start: 200, end: 210 },
-        ]);
+        bed.add_ref_blocks(
+            "chr1",
+            &[
+                RefBlock { start: 10, end: 10 },
+                RefBlock {
+                    start: 200,
+                    end: 210,
+                },
+            ],
+        );
 
         // Decide your intended behavior for nreads:
         // I recommend: if after clipping there is no contribution, still counts as a read OR not?
@@ -487,10 +486,13 @@ mod binning_tests {
         let mut bed = bed_one_chr("chr1", 100, 10);
 
         // two blocks from same read
-        bed.add_ref_blocks("chr1", &[
-            RefBlock { start: 0, end: 10 },   // bin0 += 10
-            RefBlock { start: 20, end: 25 },  // bin2 += 5
-        ]);
+        bed.add_ref_blocks(
+            "chr1",
+            &[
+                RefBlock { start: 0, end: 10 },  // bin0 += 10
+                RefBlock { start: 20, end: 25 }, // bin2 += 5
+            ],
+        );
 
         assert_eq!(bed.nreads, 1);
         assert!((get_bin(&bed, "chr1", 0) - 1.0).abs() < EPS);
@@ -547,15 +549,15 @@ mod binning_tests {
         };
 
         // Two blocks, both inside bin 0 [0,50)
-        let blocks = vec![
-            RefBlock::new(10, 20),
-            RefBlock::new(30, 40),
-        ];
+        let blocks = vec![RefBlock::new(10, 20), RefBlock::new(30, 40)];
 
         bed.add_ref_blocks("MT", &blocks);
 
         assert_eq!(bed.nreads, 1);
-        assert_eq!(bed.coverage_data[0], 1.0, "bin 0 should be incremented once");
+        assert_eq!(
+            bed.coverage_data[0], 1.0,
+            "bin 0 should be incremented once"
+        );
         assert_eq!(bed.coverage_data[1], 0.0);
         assert_eq!(bed.coverage_data[2], 0.0);
         assert_eq!(bed.coverage_data[3], 0.0);

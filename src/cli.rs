@@ -1,7 +1,7 @@
 //cli.rs
 // src/cli.rs
-use clap::{Parser, ValueEnum};
 use crate::bed_data::Normalize;
+use clap::{Parser, ValueEnum};
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 pub enum AnalysisType {
@@ -9,7 +9,6 @@ pub enum AnalysisType {
     #[value(name = "single-cell")]
     SingleCell,
 }
-
 
 /// Shared CLI options for coverage exporters (bedGraph / bigWig)
 #[derive(Parser, Debug, Clone)]
@@ -35,13 +34,12 @@ pub struct CoverageCli {
     #[arg(short = 'a', long, value_enum, default_value_t = AnalysisType::Bulk)]
     pub analysis_type: AnalysisType,
     */
-
     /// Normalize the data somehow
     #[arg(
-    short = 'n',
-    long = "normalize",
-    default_value = "not",
-    long_help = r#"Coverage normalization method.
+        short = 'n',
+        long = "normalize",
+        default_value = "not",
+        long_help = r#"Coverage normalization method.
 
 Available modes:
   - not   : no normalization (raw read counts per bin)
@@ -51,7 +49,7 @@ Available modes:
   - rpgc  : Reads Per Genomic Content (1× genome coverage)
 
 Default: not"#
-)]
+    )]
     pub normalize: Normalize,
 
     /// Bin width for coverage calculation
@@ -79,8 +77,8 @@ Default: not"#
     pub include_duplicates: bool,
 
     #[arg(
-    long,
-    long_help = r#"Exclude reads with ANY of these SAM flag bits set
+        long,
+        long_help = r#"Exclude reads with ANY of these SAM flag bits set
 (equivalent to deeptools --samFlagExclude).
 
 The value is a bitmask of SAM flags. Any read with
@@ -94,13 +92,12 @@ Examples:
   - 2816 -> exclude secondary + QC-fail + supplementary
 
 Default: None (no flag-based exclusion, matches bamCoverage defaults)"#
-)]
+    )]
     pub sam_flag_exclude: Option<u16>,
 
-
     #[arg(
-    long,
-    long_help = r#"Include only reads that have ALL of these SAM flag bits set.
+        long,
+        long_help = r#"Include only reads that have ALL of these SAM flag bits set.
 Applied after the exclusion test
 (equivalent to deeptools --samFlagInclude).
 
@@ -113,8 +110,6 @@ Examples:
   - 2    -> include only properly paired reads
 
 Default: None (no include constraint, matches bamCoverage defaults)"#
-)]
+    )]
     pub sam_flag_include: Option<u16>,
-
-
 }

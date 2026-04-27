@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 use bam_tide::compare_report::CompareReport;
 
 // bigtools
-use bigtools::{BigWigRead, ChromInfo};
 use bigtools::utils::reopen::ReopenableFile;
+use bigtools::{BigWigRead, ChromInfo};
 
 use std::fs::File;
-use std::io::{Write, BufWriter};
+use std::io::{BufWriter, Write};
 
 type BwReader = BigWigRead<ReopenableFile>;
 
@@ -43,11 +43,11 @@ type BwReader = BigWigRead<ReopenableFile>;
 )]
 struct Args {
     /// Python-generated BigWig (reference)
-    #[arg(long, short='a' , value_name = "FILE")]
+    #[arg(long, short = 'a', value_name = "FILE")]
     python_bw: PathBuf,
 
     /// Rust-generated BigWig (to be validated)
-    #[arg(long, short='b', value_name = "FILE")]
+    #[arg(long, short = 'b', value_name = "FILE")]
     rust_bw: PathBuf,
 
     /// Bin width used during coverage generation (must match both files)
@@ -124,27 +124,41 @@ fn main() -> Result<()> {
         let rs_bins = bins_from_bigwig(&mut rs, chr, chr_len, args.bin_width)?;
 
         let mut chr_rep = CompareReport::default();
-        chr_rep.update_from_bins(chr, chr_len as u64, args.bin_width as u64, &py_bins, &rs_bins, args.eps);
+        chr_rep.update_from_bins(
+            chr,
+            chr_len as u64,
+            args.bin_width as u64,
+            &py_bins,
+            &rs_bins,
+            args.eps,
+        );
 
         // NEW finish()
         let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = chr_rep.finish();
 
-        let _ = writeln!(out, "{}",format!(
-            "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
-            chr,
-            n_over_eps,
-            frac_n_over_eps,
-            mean_abs,
-            var_abs,
-            rmse,
-            max_abs,
-            chr_rep.pearson()
-        ));
+        let _ = writeln!(
+            out,
+            "{}",
+            format!(
+                "{}\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
+                chr,
+                n_over_eps,
+                frac_n_over_eps,
+                mean_abs,
+                var_abs,
+                rmse,
+                max_abs,
+                chr_rep.pearson()
+            )
+        );
 
         total.merge(&chr_rep);
     }
     let (n_over_eps, frac_n_over_eps, mean_abs, var_abs, rmse, max_abs) = total.finish();
-    let _ = writeln!(out, "{}",format!(
+    let _ = writeln!(
+        out,
+        "{}",
+        format!(
             "TOTAL\t{}\t{:.6}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.3e}\t{:.4}",
             n_over_eps,
             frac_n_over_eps,
@@ -153,19 +167,15 @@ fn main() -> Result<()> {
             rmse,
             max_abs,
             total.pearson()
-        ));
+        )
+    );
 
-    println!("Most divergent bin:\n{:?}", total.max_bin );
+    println!("Most divergent bin:\n{:?}", total.max_bin);
     Ok(())
 }
 
 /// Create a binned representation of a BigWig chromosome
-fn bins_from_bigwig(
-    bw: &mut BwReader,
-    chr: &str,
-    chr_len: u32,
-    bin_w: u32,
-) -> Result<Vec<f64>> {
+fn bins_from_bigwig(bw: &mut BwReader, chr: &str, chr_len: u32, bin_w: u32) -> Result<Vec<f64>> {
     let nbins = ((chr_len as u64 + bin_w as u64 - 1) / bin_w as u64) as usize;
     let mut bins = vec![0.0_f64; nbins];
 

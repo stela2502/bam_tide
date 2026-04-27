@@ -1,7 +1,7 @@
 use assert_cmd::Command;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
-use std::fs;
 
 const PBMC_URL: &str = "https://cf.10xgenomics.com/samples/cell-exp/3.0.0/pbmc_1k_v3/pbmc_1k_v3_possorted_genome_bam.bam";
 
@@ -11,8 +11,7 @@ const GENCODE_BASIC_CHR_GTF_GZ: &str = "https://ftp.ebi.ac.uk/pub/databases/genc
 const GRCH38_FA_URL: &str =
     "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/GRCh38.p14.genome.fa.gz";
 
-const DBSNP_VCF_URL: &str =
-    "https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz";
+const DBSNP_VCF_URL: &str = "https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz";
 
 fn run(cmd: &mut StdCommand) {
     let status = cmd.status().expect("failed to run command");
@@ -97,7 +96,6 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
     cmd.assert().success();
 }
 
-
 fn output_nonempty(outdir: &Path) -> bool {
     if !outdir.exists() {
         return false;
@@ -118,7 +116,8 @@ fn ensure_clean_dir(outdir: &Path) -> std::io::Result<()> {
 
 fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let name = path.file_name()
+    let name = path
+        .file_name()
         .expect("path has no filename")
         .to_string_lossy();
 
@@ -165,8 +164,6 @@ fn bam_quant_manual_real_data_end_to_end() {
 
     require_tools(); // check for all external tools
 
-
-
     // ---- persistent cache ----
     let cache_dir = PathBuf::from("/tmp/bam_quant_cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
@@ -179,7 +176,6 @@ fn bam_quant_manual_real_data_end_to_end() {
     // SNP analysis
     let genome_fa_gz = cache_dir.join("genome.fa.gz");
     let vcf_chr1 = PathBuf::from("tests/data/chr1_observed_snps.vcf.gz");
-
 
     // Derived artifacts
     let subset_bam = cache_dir.join(format!("pbmc_subset_{n_reads}.bam"));
@@ -195,8 +191,6 @@ fn bam_quant_manual_real_data_end_to_end() {
 
     let enable_snps = cfg!(feature = "manual-snp-tests");
 
-    
-
     if enable_snps {
         download_if_needed(GRCH38_FA_URL, &genome_fa_gz);
         //download_if_needed(DBSNP_VCF_URL, &vcf_gz);
@@ -211,7 +205,6 @@ fn bam_quant_manual_real_data_end_to_end() {
     let _ = ensure_clean_dir(&outdir);
     let outdir2 = cache_dir.join(format!("out_{n_reads}_chr1_intronic"));
     let _ = ensure_clean_dir(&outdir2);
-
 
     eprintln!("🚀 running bam-quant…");
 
@@ -238,7 +231,6 @@ fn bam_quant_manual_real_data_end_to_end() {
         ]);
     }
 
-
     // Apply to command
     cmd.args(&args);
     // Print runnable command
@@ -248,7 +240,6 @@ fn bam_quant_manual_real_data_end_to_end() {
     );
 
     cmd.assert().success();
-
 
     assert_10x_output_nonempty(&outdir);
     assert_matrix_has_entries(&outdir.join("matrix.mtx.gz"));
@@ -298,18 +289,12 @@ fn bam_quant_manual_real_data_end_to_end() {
             );
         }
     }
-
 }
 
-
 fn assert_file_nonempty(path: &Path) {
-    let meta = std::fs::metadata(path)
-        .unwrap_or_else(|_| panic!("missing file: {}", path.display()));
-    assert!(
-        meta.len() > 0,
-        "empty file: {}",
-        path.display()
-    );
+    let meta =
+        std::fs::metadata(path).unwrap_or_else(|_| panic!("missing file: {}", path.display()));
+    assert!(meta.len() > 0, "empty file: {}", path.display());
 }
 
 fn assert_10x_output_nonempty(outdir: &Path) {

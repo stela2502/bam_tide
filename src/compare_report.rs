@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter, Result};
 
-
 #[derive(Debug, Clone, Default)]
 pub struct MaxDiffBin {
     pub chr: String,
@@ -11,7 +10,6 @@ pub struct MaxDiffBin {
     pub abs_diff: f64,
 }
 
-
 impl Display for MaxDiffBin {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -21,7 +19,6 @@ impl Display for MaxDiffBin {
         )
     }
 }
-
 
 #[derive(Debug, Default, Clone)]
 pub struct CompareReport {
@@ -48,9 +45,7 @@ pub struct CompareReport {
 
     // NEW:
     pub max_bin: Option<MaxDiffBin>,
-}    
-
-
+}
 
 impl CompareReport {
     /// Update this report from two equal-length bin vectors.
@@ -67,7 +62,9 @@ impl CompareReport {
 
         for (i, (&xi, &yi)) in x.iter().zip(y.iter()).enumerate() {
             let start = (i as u64) * bin_width;
-            if start >= chr_len { break; }
+            if start >= chr_len {
+                break;
+            }
             let end = (start + bin_width).min(chr_len);
 
             self.update_one(chr, start, end, xi, yi, eps);
@@ -161,12 +158,25 @@ impl CompareReport {
 
             let rmse = (self.sum_sq / n).sqrt();
 
-            (n_over_eps, frac_n_over_eps, mean_abs, var_abs.max(0.0), rmse, self.max_abs)
+            (
+                n_over_eps,
+                frac_n_over_eps,
+                mean_abs,
+                var_abs.max(0.0),
+                rmse,
+                self.max_abs,
+            )
         }
     }
 
-    pub fn finish_names(
-    ) -> (&'static str, &'static str, &'static str, &'static str, &'static str, &'static str) {
+    pub fn finish_names() -> (
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+    ) {
         (
             "n_over_eps",
             "frac_n_over_eps",

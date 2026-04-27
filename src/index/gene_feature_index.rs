@@ -11,7 +11,7 @@ pub struct GeneFeatureIndex<'a> {
 
 impl<'a> GeneFeatureIndex<'a> {
     pub fn new(idx: &'a SpliceIndex) -> Self {
-    	let mut name_to_id = HashMap::new();
+        let mut name_to_id = HashMap::new();
 
         for gene in &idx.genes {
             for name in &gene.names {
@@ -25,9 +25,7 @@ impl<'a> GeneFeatureIndex<'a> {
 
 impl FeatureIndex for GeneFeatureIndex<'_> {
     fn feature_name(&self, feature_id: u64) -> &str {
-        self.idx
-            .gene_name(feature_id as usize)
-            .unwrap_or("NA")
+        self.idx.gene_name(feature_id as usize).unwrap_or("NA")
     }
 
     fn feature_id(&self, name: &str) -> Option<u64> {

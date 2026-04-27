@@ -68,24 +68,18 @@ pub fn record_to_blocks(rec: &Record) -> Vec<RefBlock> {
             }
 
             // Does not consume reference
-            Cigar::Ins(_)
-            | Cigar::SoftClip(_)
-            | Cigar::HardClip(_)
-            | Cigar::Pad(_) => {}
+            Cigar::Ins(_) | Cigar::SoftClip(_) | Cigar::HardClip(_) | Cigar::Pad(_) => {}
         }
     }
 
     blocks
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_htslib::bam::record::{Cigar, CigarString};
     use rust_htslib::bam::Record;
+    use rust_htslib::bam::record::{Cigar, CigarString};
 
     fn fake_record(pos: i64, cigar: CigarString) -> Record {
         let mut rec = Record::new();
@@ -98,7 +92,13 @@ mod tests {
     fn test_simple_match() {
         let rec = fake_record(100, CigarString(vec![Cigar::Match(10)]));
         let blocks = record_to_blocks(&rec);
-        assert_eq!(blocks, vec![RefBlock { start: 100, end: 110 }]);
+        assert_eq!(
+            blocks,
+            vec![RefBlock {
+                start: 100,
+                end: 110
+            }]
+        );
     }
 
     #[test]
@@ -111,8 +111,14 @@ mod tests {
         assert_eq!(
             blocks,
             vec![
-                RefBlock { start: 100, end: 105 },
-                RefBlock { start: 115, end: 120 }
+                RefBlock {
+                    start: 100,
+                    end: 105
+                },
+                RefBlock {
+                    start: 115,
+                    end: 120
+                }
             ]
         );
     }
@@ -130,11 +136,7 @@ mod tests {
         // CIGAR: 56M1D35M
         let rec = make_record(
             108_996,
-            vec![
-                Cigar::Match(56),
-                Cigar::Del(1),
-                Cigar::Match(35),
-            ],
+            vec![Cigar::Match(56), Cigar::Del(1), Cigar::Match(35)],
         );
 
         let blocks = record_to_blocks(&rec);
@@ -143,10 +145,10 @@ mod tests {
         assert_eq!(blocks.len(), 2);
 
         assert_eq!(blocks[0].start, 108_996);
-        assert_eq!(blocks[0].end,   109_052);
+        assert_eq!(blocks[0].end, 109_052);
 
         assert_eq!(blocks[1].start, 109_053);
-        assert_eq!(blocks[1].end,   109_088);
+        assert_eq!(blocks[1].end, 109_088);
     }
     #[test]
     fn test_split_blocks_across_splice() {
@@ -154,11 +156,7 @@ mod tests {
         // Expected: two blocks
         let rec = make_record(
             1_000,
-            vec![
-                Cigar::Match(50),
-                Cigar::RefSkip(1000),
-                Cigar::Match(50),
-            ],
+            vec![Cigar::Match(50), Cigar::RefSkip(1000), Cigar::Match(50)],
         );
 
         let blocks = record_to_blocks(&rec);
@@ -172,4 +170,3 @@ mod tests {
         assert_eq!(blocks[1].end, 2_100);
     }
 }
-

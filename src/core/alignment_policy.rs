@@ -1,21 +1,19 @@
-use rust_htslib::bam::Record;
 use crate::cli::CoverageCli;
-
+use rust_htslib::bam::Record;
 
 /// SAM flag bits (u16) and nice to have
 #[allow(unused)]
-const FLAG_PAIRED: u16        = 0x1;
+const FLAG_PAIRED: u16 = 0x1;
 #[allow(unused)]
-const FLAG_UNMAPPED: u16      = 0x4;
-const FLAG_SECONDARY: u16     = 0x100;
+const FLAG_UNMAPPED: u16 = 0x4;
+const FLAG_SECONDARY: u16 = 0x100;
 #[allow(unused)]
-const FLAG_QCFAIL: u16        = 0x200;
-const FLAG_DUPLICATE: u16     = 0x400;
+const FLAG_QCFAIL: u16 = 0x200;
+const FLAG_DUPLICATE: u16 = 0x400;
 const FLAG_SUPPLEMENTARY: u16 = 0x800;
-const FLAG_READ1: u16         = 0x40;
+const FLAG_READ1: u16 = 0x40;
 #[allow(unused)]
-const FLAG_READ2: u16         = 0x80; // "second in pair"
-
+const FLAG_READ2: u16 = 0x80; // "second in pair"
 
 #[derive(Clone, Copy, Debug)]
 pub struct AlignmentPolicy {
@@ -108,7 +106,7 @@ impl AlignmentPolicy {
         }
 
         // MAPQ
-        if rec.mapq() < self.min_mapq && rec.mapq() == 255{
+        if rec.mapq() < self.min_mapq && rec.mapq() == 255 {
             return false;
         }
 
@@ -128,7 +126,10 @@ impl AlignmentPolicy {
     }
 
     /// Optional: expose these for logging/debugging
-    pub fn sam_flag_exclude(&self) -> u16 { self.sam_flag_exclude }
-    pub fn sam_flag_include(&self) -> u16 { self.sam_flag_include }
+    pub fn sam_flag_exclude(&self) -> u16 {
+        self.sam_flag_exclude
+    }
+    pub fn sam_flag_include(&self) -> u16 {
+        self.sam_flag_include
+    }
 }
-

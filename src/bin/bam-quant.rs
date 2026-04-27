@@ -42,7 +42,7 @@
 // and optionally:
 //   quant_out_intronic/
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 use rust_htslib::bam::{Read, Reader, Record};
@@ -63,7 +63,7 @@ use mapping_info::MappingInfo;
 use scdata::cell_data::GeneUmiHash;
 use scdata::{MatrixValueType, Scdata};
 
-use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex, VcfReadOptions };
+use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex, VcfReadOptions};
 
 const CHUNK: usize = 2_000_000;
 
@@ -269,11 +269,7 @@ fn main() -> Result<()> {
     let header = reader.header().clone();
 
     let chr_names: Vec<String> = (0..header.target_count())
-        .map(|i| {
-            std::str::from_utf8(header.tid2name(i))
-                .unwrap()
-                .to_string()
-        })
+        .map(|i| std::str::from_utf8(header.tid2name(i)).unwrap().to_string())
         .collect();
 
     let chr_lengths: Vec<u32> = (0..header.target_count())
@@ -320,8 +316,6 @@ fn main() -> Result<()> {
         max_3p_overhang_bp: args.max_3p_overhang_bp,
         allowed_intronic_gap_size: args.allowed_intronic_gap_size,
     };
-
-
 
     // ----------------------------
     // Stage 1: stream BAM -> jobs
@@ -628,24 +622,19 @@ fn main() -> Result<()> {
         let pass: std::collections::HashSet<u64> =
             merged.export_cell_ids().iter().copied().collect();
 
-
-
-
-        if merged_snp_ref.is_empty(){
+        if merged_snp_ref.is_empty() {
             eprintln!("No SNPs collected");
-        }else {
-
-
+        } else {
             merged_snp_alt.finalize_for_cells(&pass, &snp.index);
 
-            merged_snp_ref.retain_features( &merged_snp_alt.observed_feature_ids() );
+            merged_snp_ref.retain_features(&merged_snp_alt.observed_feature_ids());
 
-            merged_snp_ref.finalize_for_cells(&pass, &snp.index); 
+            merged_snp_ref.finalize_for_cells(&pass, &snp.index);
 
             merged_snp_alt
                 .write_sparse(&add_suffix(&args.outpath, "_alt"), &snp.index)
                 .map_err(|e| anyhow!(e))
-                .context("writing SNP alt matrix")?;    
+                .context("writing SNP alt matrix")?;
 
             merged_snp_ref
                 .write_sparse(&add_suffix(&args.outpath, "_ref"), &snp.index)
@@ -726,12 +715,7 @@ fn process_chunk_gene(
                             &mut rep,
                         );
                     } else {
-                        sc.try_insert(
-                            &job.cell,
-                            GeneUmiHash(gid as u64, job.umi),
-                            1.0,
-                            &mut rep,
-                        );
+                        sc.try_insert(&job.cell, GeneUmiHash(gid as u64, job.umi), 1.0, &mut rep);
                     }
                 }
 
@@ -811,12 +795,7 @@ fn process_chunk_transcript(
                             &mut rep,
                         );
                     } else {
-                        sc.try_insert(
-                            &job.cell,
-                            GeneUmiHash(tid as u64, job.umi),
-                            1.0,
-                            &mut rep,
-                        );
+                        sc.try_insert(&job.cell, GeneUmiHash(tid as u64, job.umi), 1.0, &mut rep);
                     }
                 }
 
@@ -871,7 +850,9 @@ fn add_snp_hits(
         return;
     };
 
-    let hits = snp.index.match_read(read, snp_min_anchor.try_into().unwrap());
+    let hits = snp
+        .index
+        .match_read(read, snp_min_anchor.try_into().unwrap());
 
     if hits.ref_ids.is_empty() && hits.alt_ids.is_empty() {
         rep.report("no snp hit");
@@ -879,21 +860,11 @@ fn add_snp_hits(
     }
 
     for snp_id in hits.ref_ids {
-        sc_snp_ref.try_insert(
-            &cell,
-            GeneUmiHash(snp_id as u64, umi),
-            1.0,
-            rep,
-        );
+        sc_snp_ref.try_insert(&cell, GeneUmiHash(snp_id as u64, umi), 1.0, rep);
     }
 
     for snp_id in hits.alt_ids {
-        sc_snp_alt.try_insert(
-            &cell,
-            GeneUmiHash(snp_id as u64, umi),
-            1.0,
-            rep,
-        );
+        sc_snp_alt.try_insert(&cell, GeneUmiHash(snp_id as u64, umi), 1.0, rep);
     }
 
     rep.report("snp hit");

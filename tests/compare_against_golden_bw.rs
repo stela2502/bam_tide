@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::path::{ PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use tempfile::tempdir;
@@ -17,7 +17,9 @@ fn exe_path(name: &str) -> PathBuf {
 }
 
 fn run_ok(cmd: &mut Command) -> Result<(), String> {
-    let out = cmd.output().map_err(|e| format!("failed to spawn: {e:?}"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to spawn: {e:?}"))?;
     if !out.status.success() {
         return Err(format!(
             "command failed (exit={:?})\ncmd: {:?}\nstdout:\n{}\nstderr:\n{}",
@@ -101,7 +103,6 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         return Ok(());
     }
 
-
     // --- config ---
     let bam = Path::new("legacy/testData/subset.bam");
     let golden = Path::new("legacy/testData/subset.deepTools.bw");
@@ -129,17 +130,25 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         return Err(format!("missing binary: {}", exe_cov.display()));
     }
 
-    run_ok(
-        Command::new(&exe_cov).args([
-            "-b", bam.to_str().unwrap(),
-            "-o", out_bw.to_str().unwrap(),
-            "-w", &bin_width.to_string(),
-            "-n", "not",
-            "--min-mapping-quality", "0",
-        ])
-    )?;
+    run_ok(Command::new(&exe_cov).args([
+        "-b",
+        bam.to_str().unwrap(),
+        "-o",
+        out_bw.to_str().unwrap(),
+        "-w",
+        &bin_width.to_string(),
+        "-n",
+        "not",
+        "--min-mapping-quality",
+        "0",
+    ]))?;
 
-    if !out_bw.exists() || fs::metadata(&out_bw).map_err(|e| format!("stat rust.bw: {e:?}"))?.len() == 0 {
+    if !out_bw.exists()
+        || fs::metadata(&out_bw)
+            .map_err(|e| format!("stat rust.bw: {e:?}"))?
+            .len()
+            == 0
+    {
         return Err("rust bigWig not created or empty".into());
     }
 
@@ -152,14 +161,16 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     // IMPORTANT: adapt args to your bw-compare CLI.
     // Goal: emit a TSV with a TOTAL row containing fields:
     //   n_over_eps, frac_n_over_eps, mean_abs, rmse, max_abs, pearson_rho
-    run_ok(
-        Command::new(&exe_cmp).args([
-            "-a", golden.to_str().unwrap(),
-            "-b", out_bw.to_str().unwrap(),
-            "--eps", &eps_abs.to_string(),
-            "-o", out_tsv.to_str().unwrap(),
-        ])
-    )?;
+    run_ok(Command::new(&exe_cmp).args([
+        "-a",
+        golden.to_str().unwrap(),
+        "-b",
+        out_bw.to_str().unwrap(),
+        "--eps",
+        &eps_abs.to_string(),
+        "-o",
+        out_tsv.to_str().unwrap(),
+    ]))?;
 
     let tsv = fs::read_to_string(&out_tsv).map_err(|e| format!("read cmp.tsv: {e:?}"))?;
 
@@ -168,7 +179,9 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     // flag  CHR  n_over_eps  frac_n_over_eps  mean_abs  var_abs  rmse  max_abs  pearson_rho ...
     let mut total_line: Option<&str> = None;
     for line in tsv.lines() {
-        if line.starts_with('#') || line.trim().is_empty() { continue; }
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
         // Accept either "TOTAL" in CHR col, or line starting with "TOTAL"
         if line.contains("TOTAL\t") || line.starts_with("TOTAL\t") {
             total_line = Some(line);
@@ -183,22 +196,34 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
         out_bw.display()
     );
 
-    let line = total_line.ok_or_else(|| format!("no TOTAL row found in bw-compare output:\n{cmp_cmdline}\n{tsv}"))?;
+    let line = total_line
+        .ok_or_else(|| format!("no TOTAL row found in bw-compare output:\n{cmp_cmdline}\n{tsv}"))?;
 
     let cols: Vec<&str> = line.split('\t').map(|s| s.trim()).collect();
-
 
     // Try to locate columns by header if available; otherwise assume fixed indices.
     // Here we assume:
     // 0 flag, 1 CHR, 2 n_over_eps, 3 frac_n_over_eps, 4 mean_abs, 6 rmse, 7 max_abs, 8 pearson_rho
-    let frac_bad: f64 = cols.get(2).ok_or("missing frac_n_over_eps")?
-        .parse().map_err(|_| format!("bad frac_n_over_eps in: {line}"))?;
-    let mean_abs: f64 = cols.get(3).ok_or("missing mean_abs")?
-        .parse().map_err(|_| format!("bad mean_abs in: {line}"))?;
-    let max_abs: f64 = cols.get(6).ok_or("missing max_abs")?
-        .parse().map_err(|_| format!("bad max_abs in: {line}"))?;
-    let corr: f64 = cols.get(7).ok_or_else(|| format!("missing pearson_rho; line={line}"))?
-        .parse().map_err(|_| format!("bad pearson_rho in: {line}"))?;
+    let frac_bad: f64 = cols
+        .get(2)
+        .ok_or("missing frac_n_over_eps")?
+        .parse()
+        .map_err(|_| format!("bad frac_n_over_eps in: {line}"))?;
+    let mean_abs: f64 = cols
+        .get(3)
+        .ok_or("missing mean_abs")?
+        .parse()
+        .map_err(|_| format!("bad mean_abs in: {line}"))?;
+    let max_abs: f64 = cols
+        .get(6)
+        .ok_or("missing max_abs")?
+        .parse()
+        .map_err(|_| format!("bad max_abs in: {line}"))?;
+    let corr: f64 = cols
+        .get(7)
+        .ok_or_else(|| format!("missing pearson_rho; line={line}"))?
+        .parse()
+        .map_err(|_| format!("bad pearson_rho in: {line}"))?;
 
     eprintln!(
         "bw-compare TOTAL: frac_bad={:.3e} mean_abs={:.6} max_abs={:.6} corr={:.6}",
@@ -206,7 +231,9 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
     );
 
     if frac_bad > max_frac_bad {
-        return Err(format!("frac_bad too high: {frac_bad:.3e} > {max_frac_bad:.3e}"));
+        return Err(format!(
+            "frac_bad too high: {frac_bad:.3e} > {max_frac_bad:.3e}"
+        ));
     }
     // optional: mean_abs/max_abs checks, if you want
     if corr.is_nan() || corr < min_corr {
@@ -215,5 +242,3 @@ fn rust_bigwig_matches_golden_deeptools_bwcompare() -> Result<(), String> {
 
     Ok(())
 }
-
-
