@@ -111,7 +111,7 @@ impl BedData {
 
         let num_bins = genome_info
             .iter()
-            .map(|(_, length, _)| length.div_ceil(bin_width) )
+            .map(|(_, length, _)| length.div_ceil(bin_width))
             .sum::<usize>();
 
         let coverage_data = vec![0.0_f32; num_bins];
@@ -243,13 +243,11 @@ impl BedData {
     // Genome layout helpers
     // ============================
 
-    pub fn genome_info_to_search(
-        genome_info: &[(String, usize, usize)],
-    ) -> HashMap<String, usize> {
+    pub fn genome_info_to_search(genome_info: &[(String, usize, usize)]) -> HashMap<String, usize> {
         genome_info
             .iter()
             .enumerate()
-            .map(|(index, (name, _, _))| (name.clone(), index) )
+            .map(|(index, (name, _, _))| (name.clone(), index))
             .collect()
     }
 
@@ -266,9 +264,10 @@ impl BedData {
             let len = header.target_len(rid as u32).unwrap() as usize;
 
             if let Some(allowed) = limit_to
-                && !allowed.iter().any(|x| x == &chr) {
-                    continue;
-                }
+                && !allowed.iter().any(|x| x == &chr)
+            {
+                continue;
+            }
 
             let bins = len.div_ceil(bin_width);
             result.push((chr, len, total_bins));

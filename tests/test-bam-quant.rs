@@ -94,7 +94,6 @@ fn build_index_if_needed(gtf_chr1: &Path, index_path: &Path) {
     cmd.assert().success();
 }
 
-
 fn ensure_clean_dir(outdir: &Path) -> std::io::Result<()> {
     if outdir.exists() {
         fs::remove_dir_all(outdir)?; // removes dir + all contents

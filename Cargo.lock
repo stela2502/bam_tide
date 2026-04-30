@@ -136,19 +136,20 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bam_tide"
-version = "1.3.0"
+version = "1.3.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "bigtools",
  "clap",
- "gtf_splice_index",
+ "gtf_splice_index 0.4.2",
  "mapping_info",
+ "rand",
  "rayon",
  "rust-htslib",
  "scdata",
  "snp-index",
- "stela-int-to-str",
+ "stela-int-to-str 0.2.2",
  "tempfile",
  "tokio",
 ]
@@ -176,7 +177,7 @@ dependencies = [
  "crossbeam-utils",
  "futures",
  "index_list",
- "itertools 0.10.5",
+ "itertools",
  "libdeflater",
  "ryu",
  "serde",
@@ -205,7 +206,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools",
  "lazy_static",
  "lazycell",
  "proc-macro2",
@@ -545,7 +546,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -735,6 +736,18 @@ name = "gtf_splice_index"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc68f939f1e1933af24eefb014da75fdddbdcdfaf70365ec39c9733491e517c"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "clap",
+ "flate2",
+ "serde",
+ "zstd",
+]
+
+[[package]]
+name = "gtf_splice_index"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -984,15 +997,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -1269,6 +1273,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ppv-lite86"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "predicates"
 version = "3.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1340,6 +1353,36 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "rand"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
+dependencies = [
+ "libc",
+ "rand_chacha",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.17",
+]
 
 [[package]]
 name = "rayon"
@@ -1451,7 +1494,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1511,14 +1554,15 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "scdata"
-version = "0.2.1"
-source = "git+https://github.com/stela2502/scdata#58ca2f4c6a950ed2030fe3fd69999db3529db327"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c7e337b7d82610d0bf7fff7c0ede56da7f878c1f90ee928ef38d8497f542945"
 dependencies = [
  "flate2",
  "mapping_info",
  "rayon",
  "regex",
- "stela-int-to-str",
+ "stela-int-to-str 0.1.0",
 ]
 
 [[package]]
@@ -1644,12 +1688,12 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "snp-index"
-version = "0.1.0"
-source = "git+https://github.com/stela2502/snp-index#de339e6993d919a60d13f2566d0f7818e4b4f18e"
+version = "0.1.2"
+source = "git+https://github.com/stela2502/snp-index#b7020f3601b49064c956931ae3c8771c7466a38e"
 dependencies = [
  "anyhow",
  "flate2",
- "gtf_splice_index",
+ "gtf_splice_index 0.4.0",
  "mapping_info",
  "rust-htslib",
  "scdata",
@@ -1666,6 +1710,12 @@ name = "stela-int-to-str"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8c6a3ffb93f5c30b2376aa45c5ec3a76db1f16e6b60b5e242ad38c0d4ae411f"
+
+[[package]]
+name = "stela-int-to-str"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeb33b4023f20dbd7acf6dde4ab333c0600d05d634ffde409fc5a473a84630c7"
 
 [[package]]
 name = "strsim"
@@ -1729,7 +1779,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2309,6 +2359,26 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "synstructure",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.48"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eed437bf9d6692032087e337407a86f04cd8d6a16a37199ed57949d415bd68e9"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.48"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70e3cd084b1788766f53af483dd21f93881ff30d7320490ec3ef7526d203bad4"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
