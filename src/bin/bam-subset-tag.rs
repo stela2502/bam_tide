@@ -40,6 +40,11 @@ struct Cli {
     /// Also write unmatched reads
     #[arg(long)]
     write_unmatched: bool,
+
+    /// Number of threads used for BAM decompression (BGZF).
+    /// Does not affect downstream compute parallelism.
+    #[arg(long, default_value_t = 2)]
+    threads: usize,
 }
 
 fn parse_tag(tag: &str) -> Result<[u8; 2]> {
@@ -65,9 +70,13 @@ fn main() -> Result<()> {
     let mut stats = MappingInfo::new( None, 0.0, 0);
 
     let tag = parse_tag(&cli.tag)?;
+    let threads= cli.threads;
 
     let mut reader = bam::Reader::from_path(&cli.bam)
         .with_context(|| format!("opening BAM {}", cli.bam.display()))?;
+    
+    reader.set_threads(threads);
+
 
     let header = bam::Header::from_template(reader.header());
 
@@ -82,20 +91,27 @@ fn main() -> Result<()> {
 
     for path in &subsetter.ofile_names {
         ensure_parent_dir(path)?;
-        writers.push(
-            Writer::from_path(path, &header, bam::Format::Bam)
-                .with_context(|| format!("creating {}", path.display()))?,
-        );
+        let mut writer = Writer::from_path(path, &header, bam::Format::Bam)
+                .with_context(|| format!("creating {}", path.display()))?;
+        writer
+            .set_threads(threads)
+            .with_context(|| format!("setting writer threads for {}", path.display()))?;
+
+        writers.push( writer );
     }
 
     // Optional unmatched writer
     let mut unmatched_writer = if cli.write_unmatched {
         let path = PathBuf::from(format!("{}unmatched.bam", cli.prefix));
         ensure_parent_dir(&path)?;
-        Some(
-            Writer::from_path(&path, &header, bam::Format::Bam)
-                .context("creating unmatched BAM")?,
-        )
+        let mut writer = Writer::from_path(&path, &header, bam::Format::Bam)
+        .context("creating unmatched BAM")?;
+
+        writer
+            .set_threads(writer_threads)
+            .context("setting writer threads for unmatched BAM")?;
+
+        Some(writer)
     } else {
         None
     };
