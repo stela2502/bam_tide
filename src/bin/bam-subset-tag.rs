@@ -75,7 +75,8 @@ fn main() -> Result<()> {
     let mut reader = bam::Reader::from_path(&cli.bam)
         .with_context(|| format!("opening BAM {}", cli.bam.display()))?;
     
-    reader.set_threads(threads);
+    reader.set_threads(threads) 
+        .with_context(|| format!("setting reader threads to {}", threads))?;
 
 
     let header = bam::Header::from_template(reader.header());

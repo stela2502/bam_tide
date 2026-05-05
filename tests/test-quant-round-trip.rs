@@ -20,7 +20,7 @@ fn quant_round_trip_artificial_genome_gene_mode() -> Result<()> {
     let keep = std::env::var("KEEP_TMP").is_ok();
 
     let tmp_path = if keep {
-        let p = tmp.into_path(); // persist
+        let p = tmp.keep(); // persist
         println!("Keeping tmp dir at {}", p.display());
         p
     } else {
@@ -35,8 +35,6 @@ fn quant_round_trip_artificial_genome_gene_mode() -> Result<()> {
     let truth_out = tmp_path.as_path().join("truth");
     let quant_out = tmp_path.as_path().join("quant");
 
-    let genome = Genome::from_fasta(fasta)
-        .map_err(|e| anyhow::anyhow!("failed to load FASTA {fasta}: {e}"))?;
     let splice_index = SpliceIndex::from_path(
         "tests/data/art_genome_info.gtf",
         100_000,
