@@ -8,6 +8,7 @@ pub mod data_iter;
 pub mod index;
 pub mod ont_normalizer;
 pub mod results;
+pub mod multi_subset_bam;
 
 pub mod encoder;
 pub mod quantification;
