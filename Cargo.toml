@@ -15,7 +15,9 @@ tokio = "1.49.0"
 #scdata = { git = "https://github.com/stela2502/scdata" }
 scdata = { version = "0.2.3", features = ["compare"] }
 #gtf_splice_index = "0.4.2"
-gtf_splice_index = { path = "../gtf_splice_index" }
+#gtf_splice_index = { path = "../gtf_splice_index" }
+gtf_splice_index = { git = "https://github.com/stela2502/gtf_splice_index" }
+
 mapping_info = "0.1.0"
 int_to_str = { package = "stela-int-to-str", version = "0.2.2" }
 assert_cmd = "2.1.2"
