@@ -352,11 +352,10 @@ mod tests {
         let seq = b"NNNNCTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCTTTTTTTTTTTTTTTTTTTTTTTTACGTACGTACGT";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -387,11 +386,10 @@ mod tests {
             b"AAAAGCTCTTCCGATCTGGGTTTGCAGCCTAAAGGTAAGGGCTCATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGGGCCCC";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -420,14 +418,12 @@ mod tests {
 
         let (reverse_seq, reverse_qual) = ex.revcomp_with_qual(forward_molecule, &forward_qual);
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes = ex.extract_both_orientations(
             &reverse_seq,
             &reverse_qual,
-            &mut too_short,
-            &mut failed_poly_t,
+            &mut stats
         );
 
         assert_eq!(
@@ -454,11 +450,10 @@ mod tests {
         let seq = [mol1.as_slice(), mol2.as_slice()].concat();
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(&seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(&seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -486,11 +481,10 @@ mod tests {
         let seq = b"CTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCACGTACGTACGTACGT";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 0);
@@ -504,11 +498,10 @@ mod tests {
         let seq = b"CTACACGACGCTCTTCCGATCTGCATTAAC";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 1);
@@ -532,11 +525,10 @@ mod tests {
 
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(&seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(&seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -562,11 +554,10 @@ mod tests {
         let seq = b"AAAAGCTCTTCNGATCTGGGTTTGCAGCCTAAAGGTAAGGGCTCATTTTTTTTTTTTTTGGGGCCCC";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -589,11 +580,10 @@ mod tests {
         let seq = b"CTACACGACGCTCTTCCGATCTTTTTTTTTTTTTTACGTACGTACGT";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
         assert!(
@@ -610,11 +600,10 @@ mod tests {
         let seq = b"CTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCTTTTTTTTTTTTTT";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(
             cassettes.len(),
@@ -636,11 +625,10 @@ mod tests {
         let seq = b"CTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCACGTACGTACGTACGT";
         let qual = q(seq.len());
 
-        let mut too_short = 0;
-        let mut failed_poly_t = 0;
+        let mut stats = MappingInfo::new( None, 0.0, 0);
 
         let cassettes =
-            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
+            ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 0);
