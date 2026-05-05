@@ -1,11 +1,11 @@
 // thrust_data.rs
 use std::fs;
 
-use gtf_splice_index::{GeneId, RefBlock, SpliceIndex, Strand, TranscriptId};
-use snp_index::{Genome, SnpIndex, VcfReadOptions};
+//use gtf_splice_index::{GeneId, RefBlock, SpliceIndex, Strand, TranscriptId};
+//use snp_index::{Genome, SnpIndex, VcfReadOptions};
 
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+//use rand::rngs::SmallRng;
+//use rand::{Rng, SeedableRng};
 
 use std::path::Path;
 
