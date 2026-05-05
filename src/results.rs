@@ -9,7 +9,6 @@ use std::fs;
 
 use std::path::Path;
 
-use scdata::cell_data::GeneUmiHash;
 use scdata::{FeatureIndex, MatrixValueType, Scdata};
 
 use mapping_info::MappingInfo;
@@ -20,6 +19,12 @@ pub struct QuantData {
     pub snp_ref: Scdata,
     pub snp_alt: Scdata,
     pub report: MappingInfo,
+}
+
+impl Default for QuantData {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl QuantData {

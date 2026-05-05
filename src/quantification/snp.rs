@@ -44,7 +44,7 @@ impl SnpSideChannel {
 
         //panic!("We use the min SNP quality of {} here!\nSNP index info: {}", self.min_anchor, self.index );
         let (ref_ids, alt_ids, other_ids) =
-            self.index.get_ref_alt_other_ids_for_read(&read, self.min_anchor);
+            self.index.get_ref_alt_other_ids_for_read(read, self.min_anchor);
 
 
         if ref_ids.is_empty() && alt_ids.is_empty() {
@@ -53,11 +53,11 @@ impl SnpSideChannel {
         }
 
         for snp_id in ref_ids {
-            sc_ref.try_insert(&cell, GeneUmiHash(snp_id as u64, umi), 1.0, report);
+            sc_ref.try_insert(&cell, GeneUmiHash(snp_id, umi), 1.0, report);
         }
 
         for snp_id in alt_ids {
-            sc_alt.try_insert(&cell, GeneUmiHash(snp_id as u64, umi), 1.0, report);
+            sc_alt.try_insert(&cell, GeneUmiHash(snp_id, umi), 1.0, report);
         }
 
         report.report("snp hit");

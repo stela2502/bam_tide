@@ -1,7 +1,5 @@
 // src/encoder/sam.rs
 
-use std::fs;
-use std::path::Path;
 
 use crate::QuantData;
 use crate::encoder::cli::TestDataCli;
@@ -251,7 +249,7 @@ impl SamEncoder {
                 &mut truth.snp_ref
             };
 
-            target.try_insert(&cell, GeneUmiHash(snp.snp_id, umi), 1.0, &mut truth.report);
+            target.try_insert(cell, GeneUmiHash(snp.snp_id, umi), 1.0, &mut truth.report);
         }
     }
 

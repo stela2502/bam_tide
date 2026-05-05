@@ -299,8 +299,8 @@ impl CassetteExtractor {
         let mut filtered: Vec<AdapterHit> = Vec::new();
 
         for hit in hits {
-            if let Some(last) = filtered.last_mut() {
-                if hit.start < last.end {
+            if let Some(last) = filtered.last_mut()
+                && hit.start < last.end {
                     let hit_len = hit.end - hit.start;
                     let last_len = last.end - last.start;
 
@@ -310,7 +310,6 @@ impl CassetteExtractor {
 
                     continue;
                 }
-            }
 
             filtered.push(hit);
         }

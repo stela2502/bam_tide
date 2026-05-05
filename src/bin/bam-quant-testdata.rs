@@ -1,10 +1,6 @@
 //bam-quant-testdata.rs
-use std::fs;
 use std::process::ExitCode;
 
-use gtf_splice_index::types::RefBlock;
-use gtf_splice_index::{MatchClass, MatchOptions, SpliceIndex, SplicedRead, Strand};
-use snp_index::{Genome, SnpIndex};
 
 use bam_tide::encoder::{SamEncoder, TestDataCli};
 use clap::Parser;
