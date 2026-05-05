@@ -35,10 +35,13 @@ fn quant_round_trip_artificial_genome_gene_mode() -> Result<()> {
     let truth_out = tmp_path.as_path().join("truth");
     let quant_out = tmp_path.as_path().join("quant");
 
-
-    let genome = Genome::from_fasta( fasta )
+    let genome = Genome::from_fasta(fasta)
         .map_err(|e| anyhow::anyhow!("failed to load FASTA {fasta}: {e}"))?;
-    let splice_index = SpliceIndex::from_path("tests/data/art_genome_info.gtf", 100_000, IdNameKeys::default() )?;
+    let splice_index = SpliceIndex::from_path(
+        "tests/data/art_genome_info.gtf",
+        100_000,
+        IdNameKeys::default(),
+    )?;
     splice_index
         .save(&splice_index_path)
         .map_err(|e| anyhow::anyhow!("failed to save index: {e}"))?;

@@ -43,9 +43,9 @@ impl SnpSideChannel {
         };
 
         //panic!("We use the min SNP quality of {} here!\nSNP index info: {}", self.min_anchor, self.index );
-        let (ref_ids, alt_ids, other_ids) =
-            self.index.get_ref_alt_other_ids_for_read(read, self.min_anchor);
-
+        let (ref_ids, alt_ids, _other_ids) = self
+            .index
+            .get_ref_alt_other_ids_for_read(read, self.min_anchor);
 
         if ref_ids.is_empty() && alt_ids.is_empty() {
             report.report("no snp hit");

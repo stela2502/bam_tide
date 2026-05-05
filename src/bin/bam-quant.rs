@@ -63,7 +63,7 @@ fn run(args: QuantCli) -> Result<()> {
         return Err(anyhow!("--vcf requires --genome"));
     }
 
-    let mut first_reader = Reader::from_path(&args.bam[0])
+    let first_reader = Reader::from_path(&args.bam[0])
         .with_context(|| format!("bam file could not be read: {}", args.bam[0].display()))?;
 
     let header = first_reader.header().clone();
@@ -149,7 +149,7 @@ fn run(args: QuantCli) -> Result<()> {
     Ok(())
 }
 
-
+#[allow(clippy::too_many_arguments)]
 fn process_bam_file(
     bam_path: &std::path::Path,
     expected_header: &rust_htslib::bam::HeaderView,
@@ -165,12 +165,12 @@ fn process_bam_file(
 
     let mut reader = Reader::from_path(bam_path)
         .with_context(|| format!("bam file could not be read: {}", bam_path.display()))?;
-    reader.set_threads(3)?;  // e.g. n = 4
+    reader.set_threads(3)?; // e.g. n = 4
 
     validate_bam_header_compatible(expected_header, reader.header())
         .with_context(|| format!("BAM header mismatch for {}", bam_path.display()))?;
-    let header= reader.header().clone();
-    let job_builder = JobBuilder::new( &header, chr_map)
+    let header = reader.header().clone();
+    let job_builder = JobBuilder::new(&header, chr_map)
         .with_genome(genome, !args.no_genome_refine)
         .with_snp_index(snp.map(|s| &s.index))
         .with_min_mapq(args.min_mapq)
@@ -251,7 +251,6 @@ fn validate_bam_header_compatible(
 
     Ok(())
 }
-
 
 fn configure_rayon(threads: usize) {
     if threads > 0 {

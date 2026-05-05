@@ -1,5 +1,7 @@
 // src/encoder/sam.rs
 
+//use std::fs;
+//use std::path::Path;
 
 use crate::QuantData;
 use crate::encoder::cli::TestDataCli;
@@ -7,7 +9,9 @@ use crate::encoder::cli::TruthFeatureMode;
 use crate::encoder::model::{EncoderConfig, SamRead};
 use crate::index::{GeneFeatureIndex, TranscriptFeatureIndex};
 
-use gtf_splice_index::{GeneId, RefBlock, SpliceIndex, Strand, Transcript, TranscriptId, MatchClass };
+use gtf_splice_index::{
+    GeneId, MatchClass, RefBlock, SpliceIndex, Strand, Transcript, TranscriptId,
+};
 use int_to_str::IntToStr;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -22,6 +26,8 @@ pub struct SamEncoder {
     read_index: usize,
 }
 
+//clippy thinks this is unused...
+#[allow(dead_code)]
 struct GeneModel<'a> {
     gene_id: GeneId,
     gene_name: String,
@@ -114,7 +120,14 @@ impl SamEncoder {
                         break self.splice_index.transcripts[tx_id].clone();
                     }
                 };
-                self.generate_cell_gene_reads(cell, &transcript, &mut lines, &mut rng, &mut truth, &mut umi)?;
+                self.generate_cell_gene_reads(
+                    cell,
+                    &transcript,
+                    &mut lines,
+                    &mut rng,
+                    &mut truth,
+                    &mut umi,
+                )?;
             }
         }
 
@@ -194,7 +207,6 @@ impl SamEncoder {
         let feature_id = transcript.gene_id as u64;
 
         for _ in 0..n_spliced {
-
             let mut read = self.make_spliced_read(transcript, cell, rng)?;
             read.umi = Self::umi_to_string(*umi);
 
@@ -434,7 +446,6 @@ impl SamEncoder {
         seq: String,
         expected: MatchClass,
     ) -> Result<SamRead, String> {
-
         let gene_name = self
             .splice_index
             .genes
@@ -586,6 +597,7 @@ impl SamEncoder {
         read.qual = String::from_utf8(qual).expect("generated quality should be UTF-8");
     }
 
+    /*
     fn end_weighted_error_probability(&self, pos: usize, len: usize) -> f64 {
         if len == 0 {
             return self.config.body_error_rate;
@@ -601,6 +613,7 @@ impl SamEncoder {
                 + t * (self.config.end_error_rate - self.config.body_error_rate)
         }
     }
+
 
     fn gene_model(&self, gene_id: GeneId) -> Result<GeneModel<'_>, String> {
         let gene = self.gene(gene_id)?;
@@ -627,6 +640,7 @@ impl SamEncoder {
             exons,
         })
     }
+    */
 
     fn fetch(&self, chr_id: usize, start0: u32, end0: u32) -> Result<String, String> {
         let chr_name = self.genome.chr_name(chr_id).unwrap_or("<unknown>");
@@ -651,6 +665,7 @@ impl SamEncoder {
             .map_err(|e| format!("reference slice {chr_name}:{start0}-{end0} is not UTF-8: {e}"))
     }
 
+    /*
     fn gene(&self, gene_id: GeneId) -> Result<&gtf_splice_index::Gene, String> {
         self.splice_index
             .genes
@@ -667,6 +682,7 @@ impl SamEncoder {
             .get(transcript_id)
             .ok_or_else(|| format!("bad transcript id {:?}", transcript_id))
     }
+    */
 
     fn umi_to_string(umi: u64) -> String {
         IntToStr::from_u64(umi).to_string(12)

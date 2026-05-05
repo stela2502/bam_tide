@@ -27,13 +27,33 @@ impl fmt::Display for NormalizeStats {
         writeln!(f, "  records with 0 cassettes  : {}", self.zero_cassette)?;
         writeln!(f, "  records with 1 cassette   : {}", self.one_cassette)?;
         writeln!(f, "  records with 2+ cassettes : {}", self.multi_cassette)?;
-        writeln!(f, "  total molecules emitted   : {}", self.emitted_molecules)?;
-        writeln!(f, "  forward molecules         : {}", self.forward_molecules)?;
-        writeln!(f, "  reverse molecules         : {}", self.reverse_molecules)?;
-        writeln!(f, "  too_short_after_adapter   : {}", self.too_short_after_adapter)?;
+        writeln!(
+            f,
+            "  total molecules emitted   : {}",
+            self.emitted_molecules
+        )?;
+        writeln!(
+            f,
+            "  forward molecules         : {}",
+            self.forward_molecules
+        )?;
+        writeln!(
+            f,
+            "  reverse molecules         : {}",
+            self.reverse_molecules
+        )?;
+        writeln!(
+            f,
+            "  too_short_after_adapter   : {}",
+            self.too_short_after_adapter
+        )?;
         writeln!(f, "  failed_polyT              : {}", self.failed_poly_t)?;
         writeln!(f, "  mean molecules per read   : {:.3}", mean)?;
-        writeln!(f, "  FASTQ reads written       : {}", self.fastq_reads_written)?;
+        writeln!(
+            f,
+            "  FASTQ reads written       : {}",
+            self.fastq_reads_written
+        )?;
 
         Ok(())
     }

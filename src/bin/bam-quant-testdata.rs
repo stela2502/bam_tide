@@ -1,7 +1,6 @@
 //bam-quant-testdata.rs
 use std::process::ExitCode;
 
-
 use bam_tide::encoder::{SamEncoder, TestDataCli};
 use clap::Parser;
 

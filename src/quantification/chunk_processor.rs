@@ -13,6 +13,7 @@ pub struct ChunkProcessor<'a> {
     idx: &'a SpliceIndex,
     snp: Option<&'a SnpSideChannel>,
     match_opts: MatchOptions,
+    #[allow(dead_code)]
     min_mapq: u8,
 }
 

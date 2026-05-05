@@ -180,26 +180,26 @@ impl CassetteExtractor {
         if read_window.len() != adapter_window.len() {
             return None;
         }
-    
+
         let mut mismatches = 0usize;
-    
+
         for (read_base, adapter_base) in read_window.iter().zip(adapter_window.iter()) {
             if read_base.eq_ignore_ascii_case(adapter_base) {
                 continue;
             }
-    
+
             // ONT ambiguity: treat N as unknown, not as evidence against the hit.
             if read_base.eq_ignore_ascii_case(&b'N') || adapter_base.eq_ignore_ascii_case(&b'N') {
                 continue;
             }
-    
+
             mismatches += 1;
-    
+
             if mismatches > self.max_adapter_mismatches {
                 return None;
             }
         }
-    
+
         Some(mismatches)
     }
 
@@ -294,22 +294,22 @@ impl CassetteExtractor {
         out
     }
 
-
     fn remove_overlapping_hits(&self, hits: Vec<AdapterHit>) -> Vec<AdapterHit> {
         let mut filtered: Vec<AdapterHit> = Vec::new();
 
         for hit in hits {
             if let Some(last) = filtered.last_mut()
-                && hit.start < last.end {
-                    let hit_len = hit.end - hit.start;
-                    let last_len = last.end - last.start;
+                && hit.start < last.end
+            {
+                let hit_len = hit.end - hit.start;
+                let last_len = last.end - last.start;
 
-                    if hit_len > last_len {
-                        *last = hit;
-                    }
-
-                    continue;
+                if hit_len > last_len {
+                    *last = hit;
                 }
+
+                continue;
+            }
 
             filtered.push(hit);
         }
@@ -338,25 +338,14 @@ impl CassetteExtractor {
             None
         }
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn extractor() -> CassetteExtractor {
-        CassetteExtractor::new(
-            b"CTACACGACGCTCTTCCGATCT".to_vec(),
-            13,
-            16,
-            12,
-            10,
-            14,
-            4,
-            2,
-        )
+        CassetteExtractor::new(b"CTACACGACGCTCTTCCGATCT".to_vec(), 13, 16, 12, 10, 14, 4, 2)
     }
 
     fn q(len: usize) -> Vec<u8> {
@@ -373,14 +362,14 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
-        assert_eq!(cassettes.len(), 1, "expected one cassette, got {cassettes:#?}");
+        assert_eq!(
+            cassettes.len(),
+            1,
+            "expected one cassette, got {cassettes:#?}"
+        );
         assert_eq!(too_short, 0);
         assert_eq!(failed_poly_t, 0);
 
@@ -401,20 +390,21 @@ mod tests {
     fn extracts_adapter_suffix_example() {
         let ex = extractor();
 
-        let seq = b"AAAAGCTCTTCCGATCTGGGTTTGCAGCCTAAAGGTAAGGGCTCATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGGGCCCC";
+        let seq =
+            b"AAAAGCTCTTCCGATCTGGGTTTGCAGCCTAAAGGTAAGGGCTCATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGGGCCCC";
         let qual = q(seq.len());
 
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
-        assert_eq!(cassettes.len(), 1, "expected one suffix cassette, got {cassettes:#?}");
+        assert_eq!(
+            cassettes.len(),
+            1,
+            "expected one suffix cassette, got {cassettes:#?}"
+        );
 
         let c = &cassettes[0];
 
@@ -431,7 +421,8 @@ mod tests {
     fn extracts_reverse_complement_cassette() {
         let ex = extractor();
 
-        let forward_molecule = b"CTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCTTTTTTTTTTTTTTTTTTTTTTTTACGTACGT";
+        let forward_molecule =
+            b"CTACACGACGCTCTTCCGATCTGCATTAACAATAGACCTGTTGGAGACGCTTTTTTTTTTTTTTTTTTTTTTTTACGTACGT";
         let forward_qual = q(forward_molecule.len());
 
         let (reverse_seq, reverse_qual) = ex.revcomp_with_qual(forward_molecule, &forward_qual);
@@ -446,7 +437,11 @@ mod tests {
             &mut failed_poly_t,
         );
 
-        assert_eq!(cassettes.len(), 1, "expected one reverse-complement cassette, got {cassettes:#?}");
+        assert_eq!(
+            cassettes.len(),
+            1,
+            "expected one reverse-complement cassette, got {cassettes:#?}"
+        );
 
         let c = &cassettes[0];
 
@@ -469,14 +464,14 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            &seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(&seq, &qual, &mut too_short, &mut failed_poly_t);
 
-        assert_eq!(cassettes.len(), 2, "expected two cassettes, got {cassettes:#?}");
+        assert_eq!(
+            cassettes.len(),
+            2,
+            "expected two cassettes, got {cassettes:#?}"
+        );
 
         assert_eq!(cassettes[0].orientation, Orientation::Forward);
         assert_eq!(cassettes[1].orientation, Orientation::Forward);
@@ -501,12 +496,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 0);
@@ -523,18 +514,13 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 1);
         assert_eq!(failed_poly_t, 0);
     }
-
 
     #[test]
     fn accepts_ns_inside_full_adapter() {
@@ -556,12 +542,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            &seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(&seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(
             cassettes.len(),
@@ -590,12 +572,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(
             cassettes.len(),
@@ -607,10 +585,10 @@ mod tests {
         assert_eq!(c.orientation, Orientation::Forward);
         assert_eq!(&c.cb, b"GGGTTTGCAGCCTAAA");
         assert_eq!(&c.umi, b"GGTAAGGGCTCA");
-        }
+    }
 
-        #[test]
-        fn rejects_polyt_too_soon_after_adapter() {
+    #[test]
+    fn rejects_polyt_too_soon_after_adapter() {
         let ex = extractor();
 
         // Adapter followed almost immediately by polyT.
@@ -621,12 +599,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(cassettes.len(), 0);
         assert!(
@@ -646,12 +620,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(
             cassettes.len(),
@@ -676,12 +646,8 @@ mod tests {
         let mut too_short = 0;
         let mut failed_poly_t = 0;
 
-        let cassettes = ex.extract_both_orientations(
-            seq,
-            &qual,
-            &mut too_short,
-            &mut failed_poly_t,
-        );
+        let cassettes =
+            ex.extract_both_orientations(seq, &qual, &mut too_short, &mut failed_poly_t);
 
         assert_eq!(cassettes.len(), 0);
         assert_eq!(too_short, 0);

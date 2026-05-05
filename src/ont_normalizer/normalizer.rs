@@ -72,12 +72,11 @@ impl OntNormalizer {
                 .context("failed to set BAM reader threads")?;
         }
 
-        let mut fastq = FastqWriter::new(
-            &self.config.out,
-            self.config.gzip,
-            self.config.gzip_level,
-        )
-        .with_context(|| format!("failed to create FASTQ: {}", self.config.out.display()))?;
+        let mut fastq =
+            FastqWriter::new(&self.config.out, self.config.gzip, self.config.gzip_level)
+                .with_context(|| {
+                    format!("failed to create FASTQ: {}", self.config.out.display())
+                })?;
 
         let mut tags = self.create_tag_writer()?;
 
@@ -104,8 +103,9 @@ impl OntNormalizer {
     }
 
     fn create_tag_writer(&self) -> Result<BufWriter<File>> {
-        let file = File::create(&self.config.tags)
-            .with_context(|| format!("failed to create tags TSV: {}", self.config.tags.display()))?;
+        let file = File::create(&self.config.tags).with_context(|| {
+            format!("failed to create tags TSV: {}", self.config.tags.display())
+        })?;
 
         let mut writer = BufWriter::new(file);
 

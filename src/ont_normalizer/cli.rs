@@ -38,21 +38,24 @@ Typical use:
 )]
 pub struct Cli {
     #[arg(
-        long, short,
+        long,
+        short,
         value_name = "BAM",
         help = "Input Dorado/ONT BAM file. The BAM may be unmapped; query sequence and qualities are used."
     )]
     pub bam: PathBuf,
 
     #[arg(
-        long, short,
+        long,
+        short,
         value_name = "FASTQ[.GZ]",
         help = "Output normalized FASTQ file. By default this is gzip-compressed unless --no-gzip is set."
     )]
     pub out: PathBuf,
 
     #[arg(
-        long, short,
+        long,
+        short,
         value_name = "TSV",
         help = "Output molecule metadata TSV. Contains one row per emitted molecule with CB/UMI, qualities, coordinates, orientation, and status."
     )]

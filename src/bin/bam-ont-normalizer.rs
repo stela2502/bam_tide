@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bam_tide::ont_normalizer::{cli::Cli, OntNormalizer};
+use bam_tide::ont_normalizer::{OntNormalizer, cli::Cli};
 
 fn main() -> Result<()> {
     let cli = Cli::parse_args();

@@ -4,7 +4,6 @@ use std::fmt::Write;
 use crate::encoder::cli::TruthFeatureMode;
 use gtf_splice_index::MatchClass;
 
-
 #[derive(Debug, Clone)]
 pub struct EncoderConfig {
     pub seq_len: usize,
