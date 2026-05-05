@@ -12,6 +12,9 @@ use std::time::SystemTime;
 
 use bam_tide::multi_subset_bam::Subsetter;
 
+use mapping_info::MappingInfo;
+
+
 /// Split a BAM file into multiple BAMs based on tag values.
 ///
 /// Each input list file defines one output BAM.
@@ -61,6 +64,7 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
 fn main() -> Result<()> {
     let now = SystemTime::now();
     let cli = Cli::parse();
+    let mut stats = MappingInfo::new( None, 0.0, 0);
 
     let tag = parse_tag(&cli.tag)?;
 
@@ -98,38 +102,23 @@ fn main() -> Result<()> {
         None
     };
 
-    let mut total = 0usize;
-    let mut matched = 0usize;
-    let mut unmatched = 0usize;
-
+    
     for rec in reader.records() {
         let record = rec?;
-        total += 1;
+        stats.report("Total");
 
-        if let Some(id) = subsetter.process_record(&record, &tag) {
+        if let Some(id, name) = subsetter.process_record_with_name(&record, &tag) {
             writers[id].write(&record)?;
-            matched += 1;
+            stats.report(name)
         } else {
-            unmatched += 1;
+            stats.report("unmatched");
             if let Some(w) = unmatched_writer.as_mut() {
                 w.write(&record)?;
             }
         }
     }
 
-    // Timing
-    if let Ok(elapsed) = now.elapsed() {
-        let ms = elapsed.as_millis();
-        let sec = ms / 1000;
-        let min = sec / 60;
-        let hr = min / 60;
-
-        eprintln!(
-            "\nProcessed {total} reads\nMatched: {matched}\nUnmatched: {unmatched}\nTime: {hr}h {}m {}s\n",
-            min % 60,
-            sec % 60
-        );
-    }
+    println!("{stats}");
 
     for path in &subsetter.ofile_names {
         eprintln!("Wrote {}", path.display());

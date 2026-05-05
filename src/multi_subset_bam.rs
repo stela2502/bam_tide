@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub struct Subsetter {
     tags: BTreeMap<String, usize>,
     pub ofile_names: Vec<PathBuf>,
+    group_names: Vec<String>,
 }
 
 impl Default for Subsetter {
@@ -22,6 +23,7 @@ impl Subsetter {
         Self {
             tags: BTreeMap::new(),
             ofile_names: Vec::new(),
+            group_names: Vec<String>,
         }
     }
 
@@ -52,10 +54,25 @@ impl Subsetter {
             .and_then(|x| x.to_str())
             .with_context(|| format!("could not derive output name from {}", bc_file.display()))?;
 
+        self.group_names.push(stem.to_string());
+
         self.ofile_names
             .push(PathBuf::from(format!("{prefix}{stem}.bam")));
 
         Ok(())
+    }
+
+    pub fn group_name(&self, id: usize) -> &str {
+        &self.group_names[id]
+    }
+
+    pub fn process_record_with_name<'a>(
+        &'a self,
+        record: &Record,
+        tag: &[u8; 2],
+    ) -> Option<(usize, &'a str)> {
+        let id = self.process_record(record, tag)?;
+        Some((id, &self.group_names[id]))
     }
 
     pub fn process_record(&self, record: &Record, tag: &[u8; 2]) -> Option<usize> {
