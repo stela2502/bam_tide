@@ -749,6 +749,7 @@ dependencies = [
 [[package]]
 name = "gtf_splice_index"
 version = "0.4.2"
+source = "git+https://github.com/stela2502/gtf_splice_index#908e73eae94898fc15c0f9ee2951967583e2c84e"
 dependencies = [
  "anyhow",
  "bincode",
