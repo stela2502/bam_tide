@@ -1,7 +1,6 @@
 use crate::ont_normalizer::cassette::{Cassette, CassetteExtractor, Orientation};
 use crate::ont_normalizer::cli::Cli;
 use crate::ont_normalizer::fastq_writer::FastqWriter;
-use crate::ont_normalizer::stats::NormalizeStats;
 
 use mapping_info::MappingInfo;
 
@@ -38,7 +37,7 @@ impl OntNormalizer {
     pub fn new(config: OntNormalizerConfig) -> Self {
         Self {
             config,
-            stats: MappingInfo::new(None,0.0,0),
+            stats: MappingInfo::new(None, 0.0, 0),
         }
     }
 
@@ -64,7 +63,7 @@ impl OntNormalizer {
     pub fn stats(&self) -> &MappingInfo {
         &self.stats
     }
-    
+
     pub fn config(&self) -> &OntNormalizerConfig {
         &self.config
     }
@@ -128,7 +127,11 @@ impl OntNormalizer {
         let with_cassette = one + multi;
 
         let pct = |n: usize, d: usize| {
-            if d == 0 { 0.0 } else { (n as f64 / d as f64) * 100.0 }
+            if d == 0 {
+                0.0
+            } else {
+                (n as f64 / d as f64) * 100.0
+            }
         };
 
         let mean = if total == 0 {
@@ -138,7 +141,7 @@ impl OntNormalizer {
         };
 
         format!(
-r#"bam-ont-normalizer summary
+            r#"bam-ont-normalizer summary
 ============================
 
 Input
@@ -173,16 +176,13 @@ too short after adapter: {too_short}
             one = one,
             multi = multi,
             multi_pct = pct(multi, total),
-
             written = written,
             emitted = emitted,
             mean = mean,
-
             fwd = fwd,
             rev = rev,
             fwd_pct = pct(fwd, emitted),
             rev_pct = pct(rev, emitted),
-
             failed_poly_t = failed_poly_t,
             too_short = too_short,
         )
@@ -216,11 +216,7 @@ too short after adapter: {too_short}
         let seq = rec.seq().as_bytes();
         let qual = rec.qual().to_vec();
 
-        let cassettes = extractor.extract_both_orientations(
-            &seq,
-            &qual,
-            &mut self.stats,
-        );
+        let cassettes = extractor.extract_both_orientations(&seq, &qual, &mut self.stats);
 
         match cassettes.len() {
             0 => self.stats.report("zero_cassette"),

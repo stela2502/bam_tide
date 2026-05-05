@@ -103,12 +103,7 @@ impl CassetteExtractor {
     ) -> Vec<Cassette> {
         let mut out = Vec::new();
 
-        out.extend(self.extract_orientation(
-            seq,
-            qual,
-            Orientation::Forward,
-            stats,
-        ));
+        out.extend(self.extract_orientation(seq, qual, Orientation::Forward, stats));
 
         let (rc_seq, rc_qual) = self.revcomp_with_qual(seq, qual);
 

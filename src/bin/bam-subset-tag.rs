@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use rust_htslib::bam;
-use rust_htslib::bam::record::{Aux, Record};
+//use rust_htslib::bam::record::{Aux, Record};
 use rust_htslib::bam::{Read, Writer};
 
-use std::collections::BTreeMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+//use std::collections::BTreeMap;
+use std::fs::{self};
+//use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -40,7 +40,6 @@ struct Cli {
     write_unmatched: bool,
 }
 
-
 fn parse_tag(tag: &str) -> Result<[u8; 2]> {
     let bytes = tag.as_bytes();
     if bytes.len() != 2 {
@@ -49,27 +48,12 @@ fn parse_tag(tag: &str) -> Result<[u8; 2]> {
     Ok([bytes[0], bytes[1]])
 }
 
-fn get_tag_value(record: &Record, tag: &[u8; 2]) -> Option<String> {
-    match record.aux(tag).ok()? {
-        Aux::String(s) => Some(s.to_string()),
-        Aux::Char(c) => Some((c as char).to_string()),
-        Aux::I8(v) => Some(v.to_string()),
-        Aux::U8(v) => Some(v.to_string()),
-        Aux::I16(v) => Some(v.to_string()),
-        Aux::U16(v) => Some(v.to_string()),
-        Aux::I32(v) => Some(v.to_string()),
-        Aux::U32(v) => Some(v.to_string()),
-        Aux::Float(v) => Some(v.to_string()),
-        _ => None,
-    }
-}
-
 fn ensure_parent_dir(path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("creating directory {}", parent.display()))?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("creating directory {}", parent.display()))?;
     }
     Ok(())
 }
