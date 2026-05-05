@@ -5,6 +5,7 @@ pub mod core;
 pub mod data_iter;
 pub mod index;
 pub mod results;
+pub mod ont_normalizer;
 
 pub mod encoder;
 pub mod quantification;

@@ -21,6 +21,7 @@ int_to_str = { package = "stela-int-to-str", version = "0.2.2" }
 assert_cmd = "2.1.2"
 snp-index = { git = "https://github.com/stela2502/snp-index" }
 rand = { version = "0.8", features = ["small_rng"] }
+flate2 = "1.1.9"
 #snp-index = "0.1.0"
 
 [features]
