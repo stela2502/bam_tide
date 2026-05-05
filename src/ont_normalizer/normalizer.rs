@@ -3,6 +3,8 @@ use crate::ont_normalizer::cli::Cli;
 use crate::ont_normalizer::fastq_writer::FastqWriter;
 use crate::ont_normalizer::stats::NormalizeStats;
 
+use mapping_info::MappingInfo;
+
 use anyhow::{Context, Result};
 use rust_htslib::bam::{Read, Reader};
 use std::fs::File;
@@ -29,14 +31,14 @@ pub struct OntNormalizerConfig {
 
 pub struct OntNormalizer {
     config: OntNormalizerConfig,
-    stats: NormalizeStats,
+    stats: MappingInfo,
 }
 
 impl OntNormalizer {
     pub fn new(config: OntNormalizerConfig) -> Self {
         Self {
             config,
-            stats: NormalizeStats::default(),
+            stats: MappingInfo::new(None,0.0,0),
         }
     }
 
@@ -59,8 +61,12 @@ impl OntNormalizer {
         })
     }
 
-    pub fn stats(&self) -> &NormalizeStats {
+    pub fn stats(&self) -> &MappingInfo {
         &self.stats
+    }
+    
+    pub fn config(&self) -> &OntNormalizerConfig {
+        &self.config
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -68,7 +74,7 @@ impl OntNormalizer {
             .with_context(|| format!("failed to open BAM: {}", self.config.bam.display()))?;
 
         if self.config.threads > 1 {
-            bam.set_threads(self.config.threads)
+            bam.set_threads(self.config.threads.max(3))
                 .context("failed to set BAM reader threads")?;
         }
 
@@ -103,6 +109,86 @@ impl OntNormalizer {
         Ok(())
     }
 
+    pub fn stats_report(&self) -> String {
+        let info = &self.stats;
+
+        let total = info.get_issue_count("total_records");
+        let zero = info.get_issue_count("zero_cassette");
+        let one = info.get_issue_count("one_cassette");
+        let multi = info.get_issue_count("multi_cassette");
+
+        let emitted = info.get_issue_count("emitted_molecules");
+        let written = info.get_issue_count("fastq_reads_written");
+
+        let fwd = info.get_issue_count("forward_molecules");
+        let rev = info.get_issue_count("reverse_molecules");
+
+        let failed_poly_t = info.get_issue_count("failed_poly_t");
+        let too_short = info.get_issue_count("too_short_after_adapter");
+
+        let with_cassette = one + multi;
+
+        let pct = |n: usize, d: usize| {
+            if d == 0 { 0.0 } else { (n as f64 / d as f64) * 100.0 }
+        };
+
+        let mean = if total == 0 {
+            0.0
+        } else {
+            emitted as f64 / total as f64
+        };
+
+        format!(
+r#"bam-ont-normalizer summary
+============================
+
+Input
+-----
+reads processed        : {total}
+reads w/o cassette     : {zero} ({zero_pct:.2}%)
+reads w/ cassette      : {with_cassette} ({cassette_pct:.2}%)
+  ├─ one cassette      : {one}
+  └─ multi cassette    : {multi} ({multi_pct:.2}%)
+
+Output
+------
+FASTQ reads written    : {written}
+molecules emitted      : {emitted}
+mean molecules/read    : {mean:.3}
+
+Orientation
+-----------
+forward                : {fwd} ({fwd_pct:.2}%)
+reverse                : {rev} ({rev_pct:.2}%)
+
+Rejected
+--------
+failed polyT           : {failed_poly_t}
+too short after adapter: {too_short}
+"#,
+            total = total,
+            zero = zero,
+            zero_pct = pct(zero, total),
+            with_cassette = with_cassette,
+            cassette_pct = pct(with_cassette, total),
+            one = one,
+            multi = multi,
+            multi_pct = pct(multi, total),
+
+            written = written,
+            emitted = emitted,
+            mean = mean,
+
+            fwd = fwd,
+            rev = rev,
+            fwd_pct = pct(fwd, emitted),
+            rev_pct = pct(rev, emitted),
+
+            failed_poly_t = failed_poly_t,
+            too_short = too_short,
+        )
+    }
+
     fn create_tag_writer(&self) -> Result<BufWriter<File>> {
         let file = File::create(&self.config.tags)
             .with_context(|| format!("failed to create tags TSV: {}", self.config.tags.display()))?;
@@ -124,7 +210,7 @@ impl OntNormalizer {
         fastq: &mut FastqWriter,
         tags: &mut BufWriter<File>,
     ) -> Result<()> {
-        self.stats.total_records += 1;
+        self.stats.report("total_records");
 
         let read_name = String::from_utf8_lossy(rec.qname()).to_string();
         let seq = rec.seq().as_bytes();
@@ -133,14 +219,13 @@ impl OntNormalizer {
         let cassettes = extractor.extract_both_orientations(
             &seq,
             &qual,
-            &mut self.stats.too_short_after_adapter,
-            &mut self.stats.failed_poly_t,
+            &mut self.stats,
         );
 
         match cassettes.len() {
-            0 => self.stats.zero_cassette += 1,
-            1 => self.stats.one_cassette += 1,
-            _ => self.stats.multi_cassette += 1,
+            0 => self.stats.report("zero_cassette"),
+            1 => self.stats.report("one_cassette"),
+            _ => self.stats.report("multi_cassette"),
         }
 
         let (rc_seq, rc_qual) = extractor.revcomp_with_qual(&seq, &qual);
@@ -204,12 +289,12 @@ impl OntNormalizer {
             cassette.poly_t_len,
         )?;
 
-        self.stats.emitted_molecules += 1;
-        self.stats.fastq_reads_written += 1;
+        self.stats.report("emitted_molecules");
+        self.stats.report("fastq_reads_written");
 
         match cassette.orientation {
-            Orientation::Forward => self.stats.forward_molecules += 1,
-            Orientation::ReverseComplement => self.stats.reverse_molecules += 1,
+            Orientation::Forward => self.stats.report("forward_molecules"),
+            Orientation::ReverseComplement => self.stats.report("reverse_molecules"),
         }
 
         Ok(())

@@ -2,63 +2,64 @@ use anyhow::Result;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
-const BUFFER_SIZE: usize = 8 * 1024 * 1024;
+const BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
-pub enum FastqWriter {
-    Gzip(GzEncoder<BufWriter<File>>),
-    Plain(BufWriter<File>),
+pub struct FastqWriter {
+    writer: Box<dyn Write>,
+    qual_buf: Vec<u8>,
 }
 
 impl FastqWriter {
     pub fn new<P: AsRef<Path>>(path: P, gzip: bool, gzip_level: u32) -> Result<Self> {
-        let file = File::create(path)?;
-        let buffered = BufWriter::with_capacity(BUFFER_SIZE, file);
+        let path = path.as_ref();
 
-        if gzip {
-            let level = Compression::new(gzip_level.min(9));
-            Ok(Self::Gzip(GzEncoder::new(buffered, level)))
+        let writer: Box<dyn Write> = if path == Path::new("-") {
+            // stdout is always plain FASTQ.
+            // Use: bam-ont-normalizer --out - --no-tags | pigz -p 8 -1 > out.fastq.gz
+            Box::new(BufWriter::with_capacity(64 * 1024, io::stdout()))
         } else {
-            Ok(Self::Plain(buffered))
-        }
+            let file = File::create(path)?;
+            let buffered = BufWriter::with_capacity(BUFFER_SIZE, file);
+
+            if gzip {
+                Box::new(GzEncoder::new(
+                    buffered,
+                    Compression::new(gzip_level.min(9)),
+                ))
+            } else {
+                Box::new(buffered)
+            }
+        };
+
+        Ok(Self {
+            writer,
+            qual_buf: Vec::new(),
+        })
     }
 
     pub fn write_record(&mut self, id: &str, seq: &[u8], qual: &[u8]) -> Result<()> {
-        self.write_all(b"@")?;
-        self.write_all(id.as_bytes())?;
-        self.write_all(b"\n")?;
-        self.write_all(seq)?;
-        self.write_all(b"\n+\n")?;
+        self.writer.write_all(b"@")?;
+        self.writer.write_all(id.as_bytes())?;
+        self.writer.write_all(b"\n")?;
+        self.writer.write_all(seq)?;
+        self.writer.write_all(b"\n+\n")?;
 
-        for q in qual {
-            self.write_all(&[q.saturating_add(33)])?;
-        }
+        self.qual_buf.clear();
+        self.qual_buf.reserve(qual.len());
+        self.qual_buf
+            .extend(qual.iter().map(|q| q.saturating_add(33)));
 
-        self.write_all(b"\n")?;
-        Ok(())
-    }
-
-    pub fn finish(self) -> Result<()> {
-        match self {
-            Self::Gzip(writer) => {
-                writer.finish()?;
-            }
-            Self::Plain(mut writer) => {
-                writer.flush()?;
-            }
-        }
+        self.writer.write_all(&self.qual_buf)?;
+        self.writer.write_all(b"\n")?;
 
         Ok(())
     }
 
-    fn write_all(&mut self, bytes: &[u8]) -> Result<()> {
-        match self {
-            Self::Gzip(writer) => writer.write_all(bytes)?,
-            Self::Plain(writer) => writer.write_all(bytes)?,
-        }
-
+    pub fn finish(mut self) -> Result<()> {
+        self.writer.flush()?;
         Ok(())
     }
 }

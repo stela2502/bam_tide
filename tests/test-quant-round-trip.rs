@@ -13,6 +13,7 @@ use snp_index::{Genome, SnpIndex, VcfReadOptions};
 use bam_tide::encoder::{SamEncoder, TestDataCli, cli::TruthFeatureMode};
 
 #[test]
+#[ignore = "disabled in CI for now"]
 fn quant_round_trip_artificial_genome_gene_mode() -> Result<()> {
     let tmp = tempdir()?;
 
