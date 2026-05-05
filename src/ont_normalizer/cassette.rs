@@ -1,3 +1,5 @@
+use mapping_info::MappingInfo;
+
 const DNA_COMPLEMENT: [u8; 256] = {
     let mut table = [0u8; 256];
 
@@ -97,8 +99,7 @@ impl CassetteExtractor {
         &self,
         seq: &[u8],
         qual: &[u8],
-        too_short_after_adapter: &mut u64,
-        failed_poly_t: &mut u64,
+        stats: &mut MappingInfo,
     ) -> Vec<Cassette> {
         let mut out = Vec::new();
 
@@ -106,8 +107,7 @@ impl CassetteExtractor {
             seq,
             qual,
             Orientation::Forward,
-            too_short_after_adapter,
-            failed_poly_t,
+            stats,
         ));
 
         let (rc_seq, rc_qual) = self.revcomp_with_qual(seq, qual);
@@ -116,8 +116,7 @@ impl CassetteExtractor {
             &rc_seq,
             &rc_qual,
             Orientation::ReverseComplement,
-            too_short_after_adapter,
-            failed_poly_t,
+            stats,
         ));
 
         out
@@ -223,8 +222,7 @@ impl CassetteExtractor {
         seq: &[u8],
         qual: &[u8],
         orientation: Orientation,
-        too_short_after_adapter: &mut u64,
-        failed_poly_t: &mut u64,
+        stats: &mut MappingInfo,
     ) -> Vec<Cassette> {
         let hits = self.find_adapter_hits(seq);
         let mut out = Vec::new();
@@ -237,12 +235,12 @@ impl CassetteExtractor {
             let poly_t_start = umi_end;
 
             if poly_t_start + self.poly_t_window > seq.len() {
-                *too_short_after_adapter += 1;
+                stats.report("too_short_after_adapter");
                 continue;
             }
 
             let Some(poly_t_start) = self.find_poly_t_start(seq, poly_t_start) else {
-                *failed_poly_t += 1;
+                stats.report("failed_poly_t");
                 continue;
             };
 
@@ -252,7 +250,7 @@ impl CassetteExtractor {
                 .count();
 
             if t_count < self.poly_t_min {
-                *failed_poly_t += 1;
+                stats.report("failed_poly_t");
                 continue;
             }
 
@@ -265,14 +263,14 @@ impl CassetteExtractor {
             let transcript_len = seq.len().saturating_sub(after_polyt);
 
             if transcript_len < self.min_transcript_len {
-                *too_short_after_adapter += 1;
+                stats.report("too_short_after_adapter");
                 continue;
             }
 
             let segment_end = hits.get(i + 1).map(|next| next.start).unwrap_or(seq.len());
 
             if segment_end <= hit.start {
-                *too_short_after_adapter += 1;
+                stats.report("too_short_after_adapter");
                 continue;
             }
 
