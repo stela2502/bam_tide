@@ -362,8 +362,8 @@ mod tests {
             1,
             "expected one cassette, got {cassettes:#?}"
         );
-        assert_eq!(too_short, 0);
-        assert_eq!(failed_poly_t, 0);
+        assert_eq!(stats.count("too_short"), 0);
+        assert_eq!(stats.count("failed_poly_t"), 0);
 
         let c = &cassettes[0];
 
@@ -487,8 +487,8 @@ mod tests {
             ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
-        assert_eq!(too_short, 0);
-        assert_eq!(failed_poly_t, 1);
+        assert_eq!(stats.count("too_short"), 0);
+        assert_eq!(stats.count("failed_poly_t"), 1);
     }
 
     #[test]
@@ -504,8 +504,8 @@ mod tests {
             ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
-        assert_eq!(too_short, 1);
-        assert_eq!(failed_poly_t, 0);
+        assert_eq!(stats.count("too_short"), 1);
+        assert_eq!(stats.count("failed_poly_t"), 0);
     }
 
     #[test]
@@ -631,7 +631,7 @@ mod tests {
             ex.extract_both_orientations(seq, &qual, &mut stats);
 
         assert_eq!(cassettes.len(), 0);
-        assert_eq!(too_short, 0);
+        assert_eq!(stats.count("too_short"), 0);
         assert_eq!(
             failed_poly_t, 1,
             "missing polyT after CB+UMI should increment failed_poly_t"
