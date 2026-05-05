@@ -8,7 +8,6 @@ use rust_htslib::bam::{Read, Writer};
 use std::fs::{self};
 //use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use bam_tide::multi_subset_bam::Subsetter;
 
@@ -62,7 +61,6 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let now = SystemTime::now();
     let cli = Cli::parse();
     let mut stats = MappingInfo::new( None, 0.0, 0);
 
@@ -107,7 +105,7 @@ fn main() -> Result<()> {
         let record = rec?;
         stats.report("Total");
 
-        if let Some(id, name) = subsetter.process_record_with_name(&record, &tag) {
+        if let Some((id, name)) = subsetter.process_record_with_name(&record, &tag) {
             writers[id].write(&record)?;
             stats.report(name)
         } else {

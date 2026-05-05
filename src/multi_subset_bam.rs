@@ -23,7 +23,7 @@ impl Subsetter {
         Self {
             tags: BTreeMap::new(),
             ofile_names: Vec::new(),
-            group_names: Vec<String>,
+            group_names: Vec::new(),
         }
     }
 
