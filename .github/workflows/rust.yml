@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 1. Check out your code
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # 2. Install required native libraries for rust-htslib
       - name: Install HTSlib dependencies
@@ -25,10 +25,8 @@ jobs:
             pkg-config
 
       # 3. Set up Rust
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       # 4. Build and run tests
       - name: Build
