@@ -11,7 +11,7 @@ use mapping_info::MappingInfo;
 use anyhow::{Context, Result};
 use rust_htslib::bam::{Read, Reader};
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -192,16 +192,17 @@ too short after adapter: {too_short}
         )
     }
 
-    fn create_tag_writer(&self) -> Result<BufWriter<File>> {
+    fn create_tag_writer(&self) -> Result<ReadTagTableWriter<BufWriter<File>>> {
         let file = File::create(&self.config.tags).with_context(|| {
-            format!("failed to create tags TSV: {}", self.config.tags.display())
+            format!(
+                "failed to create tags TSV: {}",
+                self.config.tags.display()
+            )
         })?;
 
-        let mut writer = BufWriter::new(file);
+        let writer = BufWriter::new(file);
 
-        write_read_tag_table_header(&mut writer)?;
-
-        Ok(writer)
+        ReadTagTableWriter::new(writer)
     }
 
     fn process_record(

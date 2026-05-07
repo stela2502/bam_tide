@@ -7,14 +7,16 @@ use scdata::cell_data::GeneUmiHash;
 use crate::quantification::cli::QuantMode;
 use crate::quantification::job::Job;
 use crate::quantification::snp::SnpSideChannel;
+use crate::quantification::processor_options::ProcessorOptions;
 use crate::results::QuantData;
+
 
 pub struct ChunkProcessor<'a> {
     idx: &'a SpliceIndex,
     snp: Option<&'a SnpSideChannel>,
     match_opts: MatchOptions,
     #[allow(dead_code)]
-    min_mapq: u8,
+    config: ProcessorOptions,
 }
 
 impl<'a> ChunkProcessor<'a> {
@@ -22,13 +24,13 @@ impl<'a> ChunkProcessor<'a> {
         idx: &'a SpliceIndex,
         snp: Option<&'a SnpSideChannel>,
         match_opts: MatchOptions,
-        min_mapq: u8,
+        config: ProcessorOptions,
     ) -> Self {
         Self {
             idx,
             snp,
             match_opts,
-            min_mapq,
+            config,
         }
     }
 

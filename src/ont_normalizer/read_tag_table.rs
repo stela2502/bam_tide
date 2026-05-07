@@ -9,6 +9,10 @@ use std::{
 };
 use mapping_info::MappingInfo;
 
+use csv::WriterBuilder;
+use std::io::Write;
+
+
 #[derive(Debug, Clone, Args)]
 pub struct ReadTagTableCli {
     /// Optional external read-tag table, TSV or TSV.GZ.
@@ -79,16 +83,14 @@ pub struct ReadTagRecord {
     pub umi_qual: Option<String>,
 }
 
-#[derive(Debug, Clone)]
 pub struct ReadTagTable {
     records: HashMap<String, ReadTagRecord>,
-    mapping_info: MappingInfo,
+    //mapping_info: MappingInfo,
 }
 
 impl ReadTagTable {
     pub fn from_config(config: &ReadTagTableConfig) -> Result<Self> {
-        let mut mapping_info::MappingInfo::new( None, 0.0, 0);        
-        mapping_info.start_file_io();
+        let mut mapping_info = mapping_info::MappingInfo::new( None, 0.0, 0);        
 
         let reader = open_maybe_gz(&config.path)?;
 
@@ -133,7 +135,7 @@ impl ReadTagTable {
             records.insert(read_id.to_string(), record);
         }
 
-        mapping_info.stop_file_io();
+        mapping_info.stop_file_io_time();
 
         
         let (h, m, s, ms) =
@@ -149,7 +151,7 @@ impl ReadTagTable {
 
         Ok(Self { 
             records,
-            mapping_info,
+           //mapping_info,
         })
     }
 
@@ -339,10 +341,6 @@ fn open_maybe_gz(path: &Path) -> Result<Box<dyn Read>> {
     }
 }
 
-
-use anyhow::{Context, Result};
-use csv::WriterBuilder;
-use std::io::Write;
 
 pub const READ_TAG_TABLE_COLUMNS: [&str; 15] = [
     "output_read_id",

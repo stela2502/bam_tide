@@ -12,6 +12,8 @@ use int_to_str::int_to_str::IntToStr;
 use mapping_info::MappingInfo;
 use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex};
 
+use crate::ont_normalizer::read_tag_table::ReadTagTable;
+
 #[derive(Clone)]
 pub struct Job {
     pub cell: u64,
@@ -29,6 +31,7 @@ pub struct JobBuilder<'a> {
     chr_map: &'a std::collections::HashMap<String, usize>,
     genome: Option<&'a Genome>,
     snp: Option<&'a SnpIndex>,
+    read_tag_table: Option<&'a ReadTagTable>,
     min_mapq: u8,
     read1_only: bool,
     refine_against_genome: bool,
@@ -44,6 +47,7 @@ impl<'a> JobBuilder<'a> {
             chr_map,
             genome: None,
             snp: None,
+            read_tag_table: None,
             min_mapq: 0,
             read1_only: false,
             refine_against_genome: false,

@@ -27,13 +27,12 @@ use bam_tide::quantification::chunk_processor::ChunkProcessor;
 use bam_tide::quantification::cli::{QuantCli, QuantMode};
 use bam_tide::quantification::job::{Job, JobBuilder};
 use bam_tide::quantification::snp::SnpSideChannel;
+use bam_tide::quantification::processor_options::ProcessorOptions;
+use bam_tide::results::QuantData;
 
 use gtf_splice_index::{MatchOptions, SpliceIndex};
-
-
 use snp_index::Genome;
 
-use bam_tide::results::QuantData;
 
 const CHUNK: usize = 2_000_000;
 
@@ -89,7 +88,7 @@ fn run(args: QuantCli) -> Result<()> {
         allowed_intronic_gap_size: args.allowed_intronic_gap_size,
     };
 
-    let processor = ChunkProcessor::new(&idx, snp.as_ref(), match_opts, &read_tag_table,  ProcessorOptions::from(&args) );
+    let processor = ChunkProcessor::new(&idx, snp.as_ref(), match_opts,  ProcessorOptions::from(&args) );
 
     let mut data = QuantData::new();
     data.report = mapping_info::MappingInfo::new(
@@ -114,7 +113,7 @@ fn run(args: QuantCli) -> Result<()> {
             &chr_map,
             genome.as_ref(),
             snp.as_ref(),
-            read_tag_table, 
+            read_tag_table.as_ref(),
             &processor,
             &args,
             &mut data,
@@ -182,6 +181,7 @@ fn process_bam_file(
     let job_builder = JobBuilder::new(&header, chr_map)
         .with_genome(genome, !args.no_genome_refine)
         .with_snp_index(snp.map(|s| &s.index))
+        .with_read_tag_table(read_tag_table)
         .with_min_mapq(args.min_mapq)
         .read1_only(args.read1_only);
 

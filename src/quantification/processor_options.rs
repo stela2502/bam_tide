@@ -1,5 +1,6 @@
-use bam_tide::quantification::cli::{QuantCli};
-
+use crate::quantification::cli::{QuantCli};
+use crate::quantification::QuantMode;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorOptions {
@@ -21,11 +22,11 @@ impl From<&QuantCli> for ProcessorOptions {
             read1_only: args.read1_only,
             require_strand: args.require_strand,
             quant_mode: args.quant_mode,
-            read_tag_table: args.read_tag_table.clone(),
-            rt_cell_column: args.rt_cell_column.clone(),
-            rt_cell_qual_column: args.rt_cell_qual_column.clone(),
-            rt_umi_column: args.rt_umi_column.clone(),
-            rt_umi_qual_column: args.rt_umi_qual_column.clone(),
+            read_tag_table: args.read_tags.read_tag_table.clone(),
+            rt_cell_column: args.read_tags.rt_cell_column.clone(),
+            rt_cell_qual_column: args.read_tags.rt_cell_qual_column.clone(),
+            rt_umi_column: args.read_tags.rt_umi_column.clone(),
+            rt_umi_qual_column: args.read_tags.rt_umi_qual_column.clone(),
         }
     }
 }
