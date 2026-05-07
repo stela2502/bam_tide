@@ -227,6 +227,7 @@ too short after adapter: {too_short}
         }
 
         let (rc_seq, rc_qual) = extractor.revcomp_with_qual(&seq, &qual);
+        let mut needs_full_export = true;
 
         for (idx, cassette) in cassettes.iter().enumerate() {
             let mol_index = idx + 1;
@@ -247,6 +248,14 @@ too short after adapter: {too_short}
                 oriented_seq,
                 oriented_qual,
             )?;
+            needs_full_export = false;
+        }
+        if needs_full_export{
+                let out_id = format!("{read_name}/unprocessed");
+
+        fastq.write_record(&out_id, &seq, &qual)?;
+
+        self.stats.report("unprocessed_full_read_exported");
         }
 
         Ok(())
