@@ -21,6 +21,7 @@ use std::fs::File;
 use std::io::Write;
 
 use bam_tide::index::{GeneFeatureIndex, TranscriptFeatureIndex};
+use bam_tide::ont_normalizer::read_tag_table::ReadTagTable;
 
 use bam_tide::quantification::chunk_processor::ChunkProcessor;
 use bam_tide::quantification::cli::{QuantCli, QuantMode};
@@ -28,6 +29,7 @@ use bam_tide::quantification::job::{Job, JobBuilder};
 use bam_tide::quantification::snp::SnpSideChannel;
 
 use gtf_splice_index::{MatchOptions, SpliceIndex};
+
 
 use snp_index::Genome;
 
@@ -63,6 +65,11 @@ fn run(args: QuantCli) -> Result<()> {
         return Err(anyhow!("--vcf requires --genome"));
     }
 
+    let read_tag_table = match args.read_tags.to_config() {
+        Some(config) => Some(ReadTagTable::from_config(&config)?),
+        None => None,
+    };
+
     let first_reader = Reader::from_path(&args.bam[0])
         .with_context(|| format!("bam file could not be read: {}", args.bam[0].display()))?;
 
@@ -82,7 +89,7 @@ fn run(args: QuantCli) -> Result<()> {
         allowed_intronic_gap_size: args.allowed_intronic_gap_size,
     };
 
-    let processor = ChunkProcessor::new(&idx, snp.as_ref(), match_opts, args.min_mapq);
+    let processor = ChunkProcessor::new(&idx, snp.as_ref(), match_opts, &read_tag_table,  ProcessorOptions::from(&args) );
 
     let mut data = QuantData::new();
     data.report = mapping_info::MappingInfo::new(
@@ -107,6 +114,7 @@ fn run(args: QuantCli) -> Result<()> {
             &chr_map,
             genome.as_ref(),
             snp.as_ref(),
+            read_tag_table, 
             &processor,
             &args,
             &mut data,
@@ -156,6 +164,7 @@ fn process_bam_file(
     chr_map: &std::collections::HashMap<String, usize>,
     genome: Option<&Genome>,
     snp: Option<&SnpSideChannel>,
+    read_tag_table: Option<&ReadTagTable>,
     processor: &ChunkProcessor<'_>,
     args: &QuantCli,
     data: &mut QuantData,

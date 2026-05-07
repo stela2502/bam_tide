@@ -1,6 +1,10 @@
 use crate::ont_normalizer::cassette::{Cassette, CassetteExtractor, Orientation};
 use crate::ont_normalizer::cli::Cli;
 use crate::ont_normalizer::fastq_writer::FastqWriter;
+use crate::ont_normalizer::read_tag_table::{
+    ReadTagTableWriter,
+    ReadTagWriteRecord,
+};
 
 use mapping_info::MappingInfo;
 
@@ -195,10 +199,7 @@ too short after adapter: {too_short}
 
         let mut writer = BufWriter::new(file);
 
-        writeln!(
-            writer,
-            "output_read_id\toriginal_read_id\tmolecule_index\torientation\tadapter_start\tadapter_end\tsegment_start\tsegment_end\traw_cb\tquality_cb\traw_umi\tquality_umi\tpoly_t_start\tpoly_t_len\tstatus"
-        )?;
+        write_read_tag_table_header(&mut writer)?;
 
         Ok(writer)
     }
@@ -208,7 +209,7 @@ too short after adapter: {too_short}
         rec: &rust_htslib::bam::Record,
         extractor: &CassetteExtractor,
         fastq: &mut FastqWriter,
-        tags: &mut BufWriter<File>,
+        tags: &mut ReadTagTableWriter<BufWriter<File>>,
     ) -> Result<()> {
         self.stats.report("total_records");
 
@@ -253,7 +254,7 @@ too short after adapter: {too_short}
     fn write_molecule(
         &mut self,
         fastq: &mut FastqWriter,
-        tags: &mut BufWriter<File>,
+        tags: &mut ReadTagTableWriter<BufWriter<File>>,
         out_id: &str,
         original_id: &str,
         mol_index: usize,
@@ -261,29 +262,38 @@ too short after adapter: {too_short}
         seq: &[u8],
         qual: &[u8],
     ) -> Result<()> {
-        let mol_seq = &seq[cassette.segment_start..cassette.segment_end];
-        let mol_qual = &qual[cassette.segment_start..cassette.segment_end];
+        let transcript_start = cassette.poly_t_start + cassette.poly_t_len;
+        let transcript_end = cassette.segment_end;
+
+        if transcript_start >= transcript_end || transcript_end > seq.len() {
+            self.stats.report("too_short_after_adapter");
+            return Ok(());
+        }
+
+        let mol_seq = &seq[transcript_start..transcript_end];
+        let mol_qual = &qual[transcript_start..transcript_end];
 
         fastq.write_record(out_id, mol_seq, mol_qual)?;
 
-        writeln!(
-            tags,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\tPASS",
-            out_id,
-            original_id,
-            mol_index,
-            cassette.orientation.as_str(),
-            cassette.adapter_start,
-            cassette.adapter_end,
-            cassette.segment_start,
-            cassette.segment_end,
-            Self::bytes_to_string(&cassette.cb),
-            Self::qual_to_string(&cassette.cb_qual),
-            Self::bytes_to_string(&cassette.umi),
-            Self::qual_to_string(&cassette.umi_qual),
-            cassette.poly_t_start,
-            cassette.poly_t_len,
-        )?;
+        let tag_record = ReadTagWriteRecord {
+            output_read_id: out_id,
+            original_read_id: Some(original_id),
+            molecule_index: Some(mol_index),
+            orientation: Some(cassette.orientation.as_str()),
+            adapter_start: Some(cassette.adapter_start),
+            adapter_end: Some(cassette.adapter_end),
+            segment_start: Some(transcript_start),
+            segment_end: Some(transcript_end),
+            raw_cb: Some(Self::bytes_to_string(&cassette.cb)),
+            quality_cb: Some(Self::qual_to_string(&cassette.cb_qual)),
+            raw_umi: Some(Self::bytes_to_string(&cassette.umi)),
+            quality_umi: Some(Self::qual_to_string(&cassette.umi_qual)),
+            poly_t_start: Some(cassette.poly_t_start),
+            poly_t_len: Some(cassette.poly_t_len),
+            status: "PASS",
+        };
+
+        tags.write_record(&tag_record)?;
 
         self.stats.report("emitted_molecules");
         self.stats.report("fastq_reads_written");

@@ -3,6 +3,9 @@
 
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
+use bam_tide::ont_normalizer::read_tag_table::ReadTagTableCli;
+
+
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum QuantMode {
@@ -64,6 +67,9 @@ pub struct QuantCli {
     /// If supplied, BAM-derived AlignedRead objects are refined against the genome.
     #[arg(long)]
     pub genome: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub read_tags: ReadTagTableCli,
 
     /// Optional SNP VCF.
     ///

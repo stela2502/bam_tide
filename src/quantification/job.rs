@@ -61,6 +61,11 @@ impl<'a> JobBuilder<'a> {
         self
     }
 
+    pub fn with_read_tag_table(mut self, table: Option<&'a ReadTagTable>) -> Self {
+        self.read_tag_table = table;
+        self
+    }
+
     pub fn with_min_mapq(mut self, min_mapq: u8) -> Self {
         self.min_mapq = min_mapq;
         self
@@ -92,20 +97,39 @@ impl<'a> JobBuilder<'a> {
             return Ok(None);
         }
 
-        let cb_raw = match Self::aux_tag_str(rec, *b"CB") {
-            Some(v) => v,
-            None => {
-                report.report("no CB tag");
-                return Ok(None);
-            }
-        };
+        let (cb_raw, ub) = if let Some(read_tag_table) = self.read_tag_table {
+            let read_id = std::str::from_utf8(rec.qname())
+                .context("Invalid BAM read name / qname")?;
 
-        let ub = match Self::aux_tag_str(rec, *b"UB") {
-            Some(v) => v,
-            None => {
-                report.report("no UB tag");
-                return Ok(None);
+            match read_tag_table.cell_umi_for_read(read_id) {
+                Some((cell, umi)) => {
+                    report.report("cell_umi from read-tag table");
+                    (cell, umi)
+                }
+                None => {
+                    report.report("read not in read-tag table");
+                    return Ok(None);
+                }
             }
+        } else {
+            let cb_raw = match Self::aux_tag_str(rec, *b"CB") {
+                Some(v) => v,
+                None => {
+                    report.report("no CB tag");
+                    return Ok(None);
+                }
+            };
+
+            let ub = match Self::aux_tag_str(rec, *b"UB") {
+                Some(v) => v,
+                None => {
+                    report.report("no UB tag");
+                    return Ok(None);
+                }
+            };
+
+            report.report("cell_umi from BAM tags");
+            (cb_raw, ub)
         };
 
         let cb = Self::normalize_10x_barcode(cb_raw);
