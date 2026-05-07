@@ -53,6 +53,14 @@ fn main() -> Result<()> {
 fn run(args: QuantCli) -> Result<()> {
     configure_rayon(args.threads);
 
+    let mut data = QuantData::new();
+    data.report = mapping_info::MappingInfo::new(
+        None,
+        args.min_mapq as f32,
+        args.max_reads.unwrap_or(usize::MAX),
+    );
+    data.report.start_counter();
+
     let idx = SpliceIndex::load(&args.index)
         .with_context(|| format!("reading index {}", args.index.display()))?;
 
@@ -75,7 +83,7 @@ fn run(args: QuantCli) -> Result<()> {
     let header = first_reader.header().clone();
     drop(first_reader);
 
-    let chr_map = idx.build_chr_map_fuzzy();
+    let chr_map = idx.chr_map();
     let snp = load_snp_side_channel(&args, &header)?;
 
     print_run_info(genome.as_ref(), snp.as_ref());
@@ -87,16 +95,9 @@ fn run(args: QuantCli) -> Result<()> {
         max_3p_overhang_bp: args.max_3p_overhang_bp,
         allowed_intronic_gap_size: args.allowed_intronic_gap_size,
     };
+    data.report.stop_file_io_time();
 
     let processor = ChunkProcessor::new(&idx, snp.as_ref(), match_opts,  ProcessorOptions::from(&args) );
-
-    let mut data = QuantData::new();
-    data.report = mapping_info::MappingInfo::new(
-        None,
-        args.min_mapq as f32,
-        args.max_reads.unwrap_or(usize::MAX),
-    );
-    data.report.start_counter();
 
     let mut n_seen = 0usize;
 
@@ -110,7 +111,7 @@ fn run(args: QuantCli) -> Result<()> {
         process_bam_file(
             bam_path,
             &header,
-            &chr_map,
+            idx.chr_map(),
             genome.as_ref(),
             snp.as_ref(),
             read_tag_table.as_ref(),
