@@ -1,7 +1,3 @@
-//use regex::Regex;
-//use mapping_info::MappingInfo;
-//use rustody::genes_mapper::cigar::{Cigar, CigarEnum};
-
 use flate2::read::MultiGzDecoder;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};

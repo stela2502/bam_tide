@@ -10,6 +10,8 @@ pub mod multi_subset_bam;
 pub mod ont_normalizer;
 pub mod results;
 
+pub mod transcriptome_to_genome;
+
 pub mod encoder;
 pub mod quantification;
 
