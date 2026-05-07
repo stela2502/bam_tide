@@ -11,7 +11,7 @@
 //! Assumed external API from `gtf_splice_index` / local crates:
 //!
 //! - `SpliceIndex::from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<SpliceIndex>`
-//! - `SpliceIndex::transcript_by_name(&self, name: &str) -> anyhow::Result<&Transcript>`
+//! - `SpliceIndex::transcript_name(&self, name: &str) -> anyhow::Result<&Transcript>`
 //! - `SpliceIndex::gene_name(&self, gene_id: usize) -> anyhow::Result<&Gene>`
 //! - `Transcript::exons(&self) -> &[RefBlock]`
 //! - `Transcript::primary_name(&self) -> &str`
@@ -30,6 +30,7 @@ use gtf_splice_index::{RefBlock, SpliceIndex, Strand, Transcript, IdNameKeys};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MappedCigar {
+    pub chr_id: usize, //local might differ from genome!
     pub start0: u32,
     pub cigar: Vec<Cigar>,
 }
@@ -194,7 +195,17 @@ impl BamTranscriptomeMapper {
         })?;
 
         let old_cigar: Vec<Cigar> = record.cigar().iter().copied().collect();
-        let mapped = match self.map_cigar(tx, tx_start0, &old_cigar) {
+
+        let strand = if tx.strand == Strand::Unknown {
+            self.infer_record_strand(&tx, record, tx_start0, &old_cigar)?
+        } else {
+            tx.strand
+        };
+
+        let mut mapped_tx = tx.clone();
+        mapped_tx.strand = strand;
+
+        let mapped = match self.map_cigar(&mapped_tx, tx_start0, &old_cigar) {
             Ok(mapped) => mapped,
             Err(err) => {
                 self.stats.failed += 1;
@@ -214,34 +225,12 @@ impl BamTranscriptomeMapper {
 
         self.add_original_alignment_tags(record, transcript_name, tx_start0, &old_cigar)?;
 
-        record.set_tid(i32::try_from(tx.chr_id).context("chr_id does not fit i32")?);
+        record.set_tid(i32::try_from(mapped_tx.chr_id).context("chr_id does not fit i32")?);
         record.set_pos(i64::from(mapped.start0));
         record.set_cigar(Some(&CigarString(mapped.cigar)));
 
         self.stats.written += 1;
         Ok(true)
-    }
-
-    fn chromosome_lengths_from_fasta<P: AsRef<Path>>(
-        fasta: P,
-        index: &SpliceIndex,
-    ) -> Result<Vec<u32>> {
-        // Assumed API from your genome/snp_index side.
-        // Replace `snp_index::Genome` with the actual genome type you already have.
-        let genome = snp_index::Genome::from_fasta(fasta)
-            .context("reading genome FASTA")?;
-
-        let mut lengths = Vec::with_capacity(index.chr_names.len());
-        for (id, chr_name) in index.chr_names.iter().enumerate() {
-            let len = genome
-                .chr_len(id)
-                .with_context(|| format!("chromosome {chr_name:?} missing in FASTA"))?;
-            lengths.push(u32::try_from(len).with_context(|| {
-                format!("chromosome {chr_name:?} length {len} does not fit u32")
-            })?);
-        }
-
-        Ok(lengths)
     }
 
     fn copy_non_sq_header_records(
@@ -375,8 +364,10 @@ impl BamTranscriptomeMapper {
 
         let read_seq = record.seq().as_bytes();
 
+        
         let plus_score = self.score_read_against_genome(&read_seq, &plus, Strand::Plus)?;
         let minus_score = self.score_read_against_genome(&read_seq, &minus, Strand::Minus)?;
+    
 
         if plus_score > minus_score {
             Ok(Strand::Plus)
@@ -390,6 +381,81 @@ impl BamTranscriptomeMapper {
             )
         }
     }
+
+    /*
+    fn debug_score_read_against_genome(
+        &self,
+        label: &str,
+        read_seq: &[u8],
+        mapped: &MappedCigar,
+        strand: Strand,
+    ) -> Result<i64> {
+        let mut read_pos = 0usize;
+        let mut genome_pos = mapped.start0;
+        let mut score = 0i64;
+
+        let genome_chr_id = *self
+            .genome_chr_ids
+            .get(mapped.chr_id)
+            .ok_or_else(|| anyhow!("missing genome chromosome id for mapped index chr {}", mapped.chr_id))?;
+
+        eprintln!();
+        eprintln!("DEBUG score {label}");
+        eprintln!("  mapped.chr_id={}", mapped.chr_id);
+        eprintln!("  genome_chr_id={genome_chr_id}");
+        eprintln!("  start0={}", mapped.start0);
+        eprintln!("  strand={strand:?}");
+        eprintln!("  cigar={}", CigarString(mapped.cigar.clone()));
+
+        for op in &mapped.cigar {
+            match *op {
+                Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                    for _ in 0..n {
+                        let raw_read_base = read_seq[read_pos];
+
+                        let read_base = match strand {
+                            Strand::Plus | Strand::Unknown => raw_read_base,
+                            Strand::Minus => {
+                                self.complement_base(read_seq[read_seq.len() - 1 - read_pos])
+                            }
+                        };
+
+                        let genome_base = self
+                            .genome
+                            .base(genome_chr_id, genome_pos)
+                            .ok_or_else(|| anyhow!("no genome base at FASTA chr id {genome_chr_id}, position {genome_pos}"))?;
+
+                        let s = self.base_match_score(read_base, genome_base);
+                        score += s;
+
+                        eprintln!(
+                            "  read_pos={read_pos:02} genome_pos={genome_pos:03} raw={} scored_read={} genome={} score={s:+} total={score:+}",
+                            raw_read_base as char,
+                            read_base as char,
+                            genome_base as char,
+                        );
+
+                        read_pos += 1;
+                        genome_pos += 1;
+                    }
+                }
+                Cigar::Ins(n) | Cigar::SoftClip(n) => {
+                    eprintln!("  {op:?}: consume read {n}");
+                    read_pos += n as usize;
+                }
+                Cigar::Del(n) | Cigar::RefSkip(n) => {
+                    eprintln!("  {op:?}: consume genome {n}");
+                    genome_pos += n;
+                }
+                Cigar::HardClip(_) | Cigar::Pad(_) => {}
+            }
+        }
+
+        eprintln!("  FINAL {label}: {score}");
+
+        Ok(score)
+    }*/
+
     fn score_read_against_genome(
         &self,
         read_seq: &[u8],
@@ -410,13 +476,29 @@ impl BamTranscriptomeMapper {
 
                         let read_base = match strand {
                             Strand::Plus | Strand::Unknown => read_seq[read_pos],
-                            Strand::Minus => self.complement_base(read_seq[read_seq.len() - 1 - read_pos]),
+                            Strand::Minus => {
+                                self.complement_base(read_seq[read_seq.len() - 1 - read_pos])
+                            }
                         };
+
+                        let genome_chr_id = *self
+                            .genome_chr_ids
+                            .get(mapped.chr_id)
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "missing genome chromosome id for mapped index chr {}",
+                                    mapped.chr_id
+                                )
+                            })?;
 
                         let genome_base = self
                             .genome
-                            .base(0, genome_pos)
-                            .ok_or_else(|| anyhow!("no genome base at position {genome_pos}"))?;
+                            .base(genome_chr_id, genome_pos)
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "no genome base at FASTA chr id {genome_chr_id}, position {genome_pos}"
+                                )
+                            })?;
 
                         score += self.base_match_score(read_base, genome_base);
 
@@ -450,24 +532,6 @@ impl BamTranscriptomeMapper {
         }
     }
 
-    fn sequence_match_score(
-        &self,
-        a: &[u8],
-        b: &[u8],
-    ) -> i64 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| {
-                if x.eq_ignore_ascii_case(y) {
-                    2
-                } else if *x == b'N' || *y == b'N' {
-                    0
-                } else {
-                    -1
-                }
-            })
-            .sum()
-    }
 
     fn map_cigar(
         &self,
@@ -566,7 +630,11 @@ impl BamTranscriptomeMapper {
 
         self.merge_cigar(&mut out);
 
-        Ok(MappedCigar { start0, cigar: out })
+        Ok(MappedCigar {
+            chr_id: tx.chr_id,
+            start0,
+            cigar: out,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -922,18 +990,38 @@ chrA\ttest\texon\t101\t150\t.\t-\t.\tgene_id \"gene_minus_two\"; transcript_id \
 chrA\ttest\texon\t201\t250\t.\t-\t.\tgene_id \"gene_minus_two\"; transcript_id \"tx_minus_two\";\n\
 chrA\ttest\texon\t101\t110\t.\t+\t.\tgene_id \"gene_plus_three\"; transcript_id \"tx_plus_three\";\n\
 chrA\ttest\texon\t201\t210\t.\t+\t.\tgene_id \"gene_plus_three\"; transcript_id \"tx_plus_three\";\n\
-chrA\ttest\texon\t301\t310\t.\t+\t.\tgene_id \"gene_plus_three\"; transcript_id \"tx_plus_three\";\n";
+chrA\ttest\texon\t301\t310\t.\t+\t.\tgene_id \"gene_plus_three\"; transcript_id \"tx_plus_three\";\n\
+chrA\ttest\texon\t101\t110\t.\t.\t.\tgene_id \"gene_unknown_two\"; transcript_id \"tx_unknown_two\";\n\
+chrA\ttest\texon\t201\t210\t.\t.\t.\tgene_id \"gene_unknown_two\"; transcript_id \"tx_unknown_two\";\n";
 
         f.write_all(gtf.as_bytes()).unwrap();
 
         path
     }
+    fn write_test_fasta() -> PathBuf {
+        let path = tmp_path("genome_fasta");
+        let mut seq = vec![b'A'; 1_000];
 
+        seq[100..110].copy_from_slice(b"ACGTACGTAA");
+        seq[200..210].copy_from_slice(b"GGGTTTCCCA");
+
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(f, ">chrA").unwrap();
+        writeln!(f, "{}", String::from_utf8(seq).unwrap()).unwrap();
+
+        path
+    }
     fn dummy_mapper() -> BamTranscriptomeMapper {
         let gtf = write_test_gtf();
+        let fasta = write_test_fasta();
+
         let index = SpliceIndex::from_path(&gtf, 10_000, IdNameKeys::default() ).unwrap();
-        let mapper = BamTranscriptomeMapper::new(index, vec![1_000]).unwrap();
+        let genome = snp_index::Genome::from_fasta(&fasta).unwrap();
+
+        let mapper = BamTranscriptomeMapper::from_index_and_genome(index, genome ).unwrap();
         let _ = fs::remove_file(gtf);
+        let _ = fs::remove_file(fasta);
+
         mapper
     }
 
@@ -1260,16 +1348,46 @@ chrA\ttest\texon\t301\t310\t.\t+\t.\tgene_id \"gene_plus_three\"; transcript_id 
         assert_eq!(mapper.complement_base(b'?'), b'N');
     }
 
-    #[test]
-    fn new_rejects_chr_length_mismatch() {
-        let gtf = write_test_gtf();
-        let index = SpliceIndex::from_path(&gtf, 10_00, IdNameKeys::default() ).unwrap();
-        let err = BamTranscriptomeMapper::new(index, vec![1_000, 1_000]).unwrap_err();
-        let _ = fs::remove_file(gtf);
 
-        assert!(
-            err.to_string().contains("chr_lengths has 2 entries"),
-            "unexpected error: {err:?}"
-        );
+    fn make_record(seq: &[u8], cigar: &[Cigar]) -> bam::Record {
+        let mut rec = bam::Record::new();
+        let qual = vec![30u8; seq.len()];
+        rec.set(b"read1", Some(&CigarString(cigar.to_vec())), seq, &qual);
+        rec
+    }
+
+    #[test]
+    fn unknown_strand_is_inferred_as_plus_from_genome_score() {
+        let mapper = dummy_mapper();
+        let tx = tx(&mapper, "tx_unknown_two");
+
+        // Plus transcript order:
+        // exon1 chrA:100..110 = ACGTACGTAA
+        // exon2 chrA:200..210 = GGGTTTCCCA
+        let rec = make_record(b"ACGTACGTAAGGGTTTCCCA", &[Cigar::Match(20)]);
+
+        let strand = mapper
+            .infer_record_strand(tx, &rec, 0, &[Cigar::Match(20)])
+            .unwrap();
+
+        assert_eq!(strand, Strand::Plus);
+    }
+
+    #[test]
+    fn unknown_strand_is_inferred_as_minus_from_genome_score() {
+        let mapper = dummy_mapper();
+        let tx = tx(&mapper, "tx_unknown_two");
+
+        // Minus transcript order is reverse-complement of:
+        // exon2 + exon1 = GGGTTTCCCA ACGTACGTAA
+        //
+        // revcomp("GGGTTTCCCAACGTACGTAA") = TTACGTACGTTGGGAAACCC
+        let rec = make_record(b"TTACGTACGTTGGGAAACCC", &[Cigar::Match(20)]);
+
+        let strand = mapper
+            .infer_record_strand(tx, &rec, 0, &[Cigar::Match(20)])
+            .unwrap();
+
+        assert_eq!(strand, Strand::Minus);
     }
 }
