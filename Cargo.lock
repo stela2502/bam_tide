@@ -756,9 +756,9 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "gtf_splice_index"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc68f939f1e1933af24eefb014da75fdddbdcdfaf70365ec39c9733491e517c"
+checksum = "464141fa95f3245f372dc2b975ff3fab9610f240d286fe3cda8d35927203be9a"
 dependencies = [
  "anyhow",
  "bincode",
@@ -771,7 +771,7 @@ dependencies = [
 [[package]]
 name = "gtf_splice_index"
 version = "0.4.3"
-source = "git+https://github.com/stela2502/gtf_splice_index#f8e32f43ecd246cb8eca11cc6df5ac17087c6a55"
+source = "git+https://github.com/stela2502/gtf_splice_index#164639f9332231bd6ad46ba907f971b540c1b0b4"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1717,7 +1717,7 @@ source = "git+https://github.com/stela2502/snp-index#b7020f3601b49064c956931ae3c
 dependencies = [
  "anyhow",
  "flate2",
- "gtf_splice_index 0.4.0",
+ "gtf_splice_index 0.4.2",
  "mapping_info",
  "rust-htslib",
  "scdata",

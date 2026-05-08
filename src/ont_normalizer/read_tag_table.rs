@@ -11,7 +11,7 @@ use mapping_info::MappingInfo;
 
 use csv::WriterBuilder;
 use std::io::Write;
-
+use std::fmt;
 
 #[derive(Debug, Clone, Args)]
 pub struct ReadTagTableCli {
@@ -83,6 +83,7 @@ pub struct ReadTagRecord {
     pub umi_qual: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct ReadTagTable {
     records: HashMap<String, ReadTagRecord>,
     //mapping_info: MappingInfo,
@@ -440,6 +441,327 @@ impl<W: Write> ReadTagTableWriter<W> {
     }
 }
 
+
+impl fmt::Display for ReadTagRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "read_id={}, original_read_id={}, cell={}, cell_qual={}, umi={}, umi_qual={}",
+            self.read_id,
+            self.original_read_id.as_deref().unwrap_or("-"),
+            self.cell,
+            self.cell_qual.as_deref().unwrap_or("-"),
+            self.umi,
+            self.umi_qual.as_deref().unwrap_or("-"),
+        )
+    }
+}
+
+impl fmt::Display for ReadTagTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "ReadTagTable: {} records", self.records.len())?;
+
+        for (i, record) in self.records.values().take(3).enumerate() {
+            writeln!(f, "  [{}] {}", i, record)?;
+        }
+
+        Ok(())
+    }
+}
+
+
 fn opt_usize(value: Option<usize>) -> String {
     value.map(|v| v.to_string()).unwrap_or_default()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::{write::GzEncoder, Compression};
+    use std::fs;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+
+        std::env::temp_dir().join(format!("read_tag_table_test_{stamp}_{name}"))
+    }
+
+    fn write_text(path: &Path, text: &str) {
+        fs::write(path, text).unwrap();
+    }
+
+    fn default_config(path: PathBuf) -> ReadTagTableConfig {
+        ReadTagTableConfig {
+            path,
+            read_id_column: "output_read_id".to_string(),
+            original_read_id_column: "original_read_id".to_string(),
+            cell_column: "raw_cb".to_string(),
+            cell_qual_column: "quality_cb".to_string(),
+            umi_column: "raw_umi".to_string(),
+            umi_qual_column: "quality_umi".to_string(),
+        }
+    }
+
+    #[test]
+    fn reads_plain_tsv_table() {
+        let path = tmp_path("table.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\toriginal_read_id\traw_cb\tquality_cb\traw_umi\tquality_umi\n",
+                "read1\torig1\tCELL1\tIIII\tUMI1\tJJJJ\n",
+                "read2\torig2\tCELL1\tIIII\tUMI2\tJJJJ\n",
+                "read3\t\tCELL2\t\tUMI3\t\n",
+            ),
+        );
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+
+        assert_eq!(table.len(), 3);
+        assert!(!table.is_empty());
+
+        let rec = table.get("read1").unwrap();
+        assert_eq!(rec.read_id, "read1");
+        assert_eq!(rec.original_read_id.as_deref(), Some("orig1"));
+        assert_eq!(rec.cell, "CELL1");
+        assert_eq!(rec.cell_qual.as_deref(), Some("IIII"));
+        assert_eq!(rec.umi, "UMI1");
+        assert_eq!(rec.umi_qual.as_deref(), Some("JJJJ"));
+
+        let rec = table.get("read3").unwrap();
+        assert_eq!(rec.original_read_id, None);
+        assert_eq!(rec.cell_qual, None);
+        assert_eq!(rec.umi_qual, None);
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn skips_rows_with_missing_required_values() {
+        let path = tmp_path("missing.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\traw_cb\traw_umi\n",
+                "read1\tCELL1\tUMI1\n",
+                "\tCELL2\tUMI2\n",
+                "read3\t\tUMI3\n",
+                "read4\tCELL4\t\n",
+            ),
+        );
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+
+        assert_eq!(table.len(), 1);
+        assert!(table.get("read1").is_some());
+        assert!(table.get("read3").is_none());
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn missing_required_column_returns_error() {
+        let path = tmp_path("bad_columns.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\traw_cb\n",
+                "read1\tCELL1\n",
+            ),
+        );
+
+        let err = ReadTagTable::from_config(&default_config(path.clone()))
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            err.contains("Could not find required column 'raw_umi'"),
+            "unexpected error: {err}"
+        );
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn reads_gzipped_tsv_table() {
+        let path = tmp_path("table.tsv.gz");
+
+        let file = File::create(&path).unwrap();
+        let mut gz = GzEncoder::new(file, Compression::default());
+
+        gz.write_all(
+            concat!(
+                "output_read_id\traw_cb\traw_umi\n",
+                "read1\tCELL1\tUMI1\n",
+                "read2\tCELL2\tUMI2\n",
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+        gz.finish().unwrap();
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+
+        assert_eq!(table.len(), 2);
+        assert_eq!(table.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+        assert_eq!(table.cell_umi_for_read("missing"), None);
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn pair_counts_counts_cell_umi_observations() {
+        let path = tmp_path("pairs.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\traw_cb\traw_umi\n",
+                "read1\tCELL1\tUMI1\n",
+                "read2\tCELL1\tUMI1\n",
+                "read3\tCELL1\tUMI2\n",
+                "read4\tCELL2\tUMI3\n",
+            ),
+        );
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+        let counts = table.pair_counts();
+
+        assert_eq!(counts.get(&("CELL1".to_string(), "UMI1".to_string())), Some(&2));
+        assert_eq!(counts.get(&("CELL1".to_string(), "UMI2".to_string())), Some(&1));
+        assert_eq!(counts.get(&("CELL2".to_string(), "UMI3".to_string())), Some(&1));
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn summarize_pairs_applies_pair_and_cell_thresholds() {
+        let path = tmp_path("summary.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\traw_cb\traw_umi\n",
+                "r1\tCELL1\tUMI1\n",
+                "r2\tCELL1\tUMI1\n",
+                "r3\tCELL1\tUMI2\n",
+                "r4\tCELL1\tUMI2\n",
+                "r5\tCELL2\tUMI3\n",
+                "r6\tCELL2\tUMI3\n",
+                "r7\tCELL3\tUMI4\n",
+            ),
+        );
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+
+        let stats = table.summarize_pairs(2, 2);
+
+        assert_eq!(stats.cell_entries, 1);
+        assert_eq!(stats.unique_cell_umi_combos, 2);
+        assert_eq!(stats.total_pair_observations, 4);
+
+        assert_eq!(stats.umis_per_cell.n, 1);
+        assert_eq!(stats.umis_per_cell.min, 2);
+        assert_eq!(stats.umis_per_cell.max, 2);
+
+        assert_eq!(stats.detections_per_cell_umi.n, 2);
+        assert_eq!(stats.detections_per_cell_umi.min, 2);
+        assert_eq!(stats.detections_per_cell_umi.max, 2);
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn display_for_record_is_informative() {
+        let rec = ReadTagRecord {
+            read_id: "read1".to_string(),
+            original_read_id: Some("orig1".to_string()),
+            cell: "CELL1".to_string(),
+            cell_qual: None,
+            umi: "UMI1".to_string(),
+            umi_qual: Some("JJJJ".to_string()),
+        };
+
+        let text = rec.to_string();
+
+        assert!(text.contains("read_id=read1"));
+        assert!(text.contains("original_read_id=orig1"));
+        assert!(text.contains("cell=CELL1"));
+        assert!(text.contains("cell_qual=-"));
+        assert!(text.contains("umi=UMI1"));
+        assert!(text.contains("umi_qual=JJJJ"));
+    }
+
+    #[test]
+    fn display_for_table_shows_count_and_at_most_three_records() {
+        let path = tmp_path("display.tsv");
+
+        write_text(
+            &path,
+            concat!(
+                "output_read_id\traw_cb\traw_umi\n",
+                "read1\tCELL1\tUMI1\n",
+                "read2\tCELL2\tUMI2\n",
+                "read3\tCELL3\tUMI3\n",
+                "read4\tCELL4\tUMI4\n",
+            ),
+        );
+
+        let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
+        let text = table.to_string();
+
+        assert!(text.contains("ReadTagTable: 4 records"));
+
+        let shown_records = text.lines().filter(|line| line.trim_start().starts_with('[')).count();
+
+        assert_eq!(shown_records, 3);
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn writer_writes_header_and_rows() {
+        let mut out = Vec::new();
+
+        {
+            let mut writer = ReadTagTableWriter::new(&mut out).unwrap();
+
+            writer
+                .write_record(&ReadTagWriteRecord {
+                    output_read_id: "read1",
+                    original_read_id: Some("orig1"),
+                    molecule_index: Some(7),
+                    orientation: Some("Forward"),
+                    adapter_start: Some(10),
+                    adapter_end: Some(30),
+                    segment_start: Some(31),
+                    segment_end: Some(100),
+                    raw_cb: Some("CELL1".to_string()),
+                    quality_cb: Some("IIII".to_string()),
+                    raw_umi: Some("UMI1".to_string()),
+                    quality_umi: Some("JJJJ".to_string()),
+                    poly_t_start: Some(101),
+                    poly_t_len: Some(20),
+                    status: "ok",
+                })
+                .unwrap();
+
+            writer.flush().unwrap();
+        }
+
+        let text = String::from_utf8(out).unwrap();
+
+        assert!(text.starts_with(&READ_TAG_TABLE_COLUMNS.join("\t")));
+        assert!(text.contains("read1\torig1\t7\tForward\t10\t30\t31\t100\tCELL1\tIIII\tUMI1\tJJJJ\t101\t20\tok"));
+    }
 }

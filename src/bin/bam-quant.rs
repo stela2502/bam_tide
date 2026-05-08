@@ -73,7 +73,11 @@ fn run(args: QuantCli) -> Result<()> {
     }
 
     let read_tag_table = match args.read_tags.to_config() {
-        Some(config) => Some(ReadTagTable::from_config(&config)?),
+        Some(config) => {
+            let tab = ReadTagTable::from_config(&config)?;
+            println!("{tab}");
+            Some(tab)
+        },
         None => None,
     };
 
@@ -83,7 +87,7 @@ fn run(args: QuantCli) -> Result<()> {
     let header = first_reader.header().clone();
     drop(first_reader);
 
-    let chr_map = idx.chr_map();
+    //let chr_map = idx.chr_map();
     let snp = load_snp_side_channel(&args, &header)?;
 
     print_run_info(genome.as_ref(), snp.as_ref());
