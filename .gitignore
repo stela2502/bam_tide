@@ -4,3 +4,5 @@
 /.cargo/
 .ipynb_checkpoints/
 *.ipynb
+/work/
+/.nextflow*
