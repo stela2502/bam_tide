@@ -4,6 +4,7 @@ use flate2::write::GzEncoder;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
+use crate::ont_normalizer::fastq_record::FastqRecord;
 
 const BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
@@ -38,6 +39,11 @@ impl FastqWriter {
             writer,
             qual_buf: Vec::new(),
         })
+    }
+
+    pub fn write(&mut self, record: &FastqRecord) -> Result<()> {
+        record.write_to(&mut self.writer, &mut self.qual_buf)?;
+        Ok(())
     }
 
     pub fn write_record(&mut self, id: &str, seq: &[u8], qual: &[u8]) -> Result<()> {

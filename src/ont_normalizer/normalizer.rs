@@ -1,10 +1,11 @@
-use crate::ont_normalizer::cassette::{Cassette, CassetteExtractor, Orientation};
 use crate::ont_normalizer::cli::Cli;
 use crate::ont_normalizer::fastq_writer::FastqWriter;
 use crate::ont_normalizer::read_tag_table::{
     ReadTagTableWriter,
     ReadTagWriteRecord,
 };
+use crate::ont_normalizer::primer::{PrimerDetector, PrimerSplit};
+use crate::ont_normalizer::fastq_record::FastqRecord;
 
 use mapping_info::MappingInfo;
 
@@ -13,6 +14,10 @@ use rust_htslib::bam::{Read, Reader};
 use std::fs::File;
 use std::io::{BufWriter};
 use std::path::PathBuf;
+use rayon::prelude::*;
+use std::io::Write;
+
+const CHUNK_SIZE :usize = 1_000_000;
 
 #[derive(Debug, Clone)]
 pub struct OntNormalizerConfig {
@@ -77,7 +82,7 @@ impl OntNormalizer {
             .with_context(|| format!("failed to open BAM: {}", self.config.bam.display()))?;
 
         if self.config.threads > 1 {
-            bam.set_threads(self.config.threads.max(3))
+            bam.set_threads(self.config.threads.saturating_sub(1).max(1))
                 .context("failed to set BAM reader threads")?;
         }
 
@@ -89,20 +94,22 @@ impl OntNormalizer {
 
         let mut tags = self.create_tag_writer()?;
 
-        let extractor = CassetteExtractor::new(
-            self.config.adapter.clone(),
-            self.config.min_adapter_match,
-            self.config.cb_len,
-            self.config.umi_len,
-            self.config.poly_t_min,
-            self.config.poly_t_window,
-            self.config.min_transcript_len,
-            self.config.max_adapter_mismatches,
-        );
+        let detector = PrimerDetector::tenx_v3();
+
+        let mut chunk: Vec<FastqRecord> = Vec::with_capacity(CHUNK_SIZE);
 
         for rec_result in bam.records() {
             let rec = rec_result?;
-            self.process_record(&rec, &extractor, &mut fastq, &mut tags)?;
+            chunk.push(FastqRecord::from_bam_record(&rec));
+
+            if chunk.len() >= CHUNK_SIZE {
+                self.process_chunk(&chunk, &detector, &mut fastq, &mut tags).expect("Chunk was not prcessed correctly");
+                chunk.clear();
+            }
+        }
+
+        if !chunk.is_empty() {
+            self.process_chunk(&chunk, &detector, &mut fastq, &mut tags).expect("Chunk was not prcessed correctly");
         }
 
         fastq.finish()?;
@@ -110,6 +117,70 @@ impl OntNormalizer {
 
         Ok(())
     }
+
+    fn process_chunk<W: Write>(
+        &mut self,
+        input: &[FastqRecord],
+        detector: &PrimerDetector,
+        fastq: &mut FastqWriter,
+        tags: &mut ReadTagTableWriter<W>,
+    ) -> Result<()>  {
+
+        let partials: Vec<(Vec<PrimerSplit>, MappingInfo)> = input
+            .par_iter()
+            .map(|read| {
+                let mut local_stats = MappingInfo::new(None, 0.0, 0);
+
+                let splits = match detector.split_read(read, &mut local_stats) {
+                    Ok(splits) => splits,
+                    Err(_) => {
+                        local_stats.report("no_primer_split");
+                        Vec::new()
+                    }
+                };
+
+                (splits, local_stats)
+            })
+            .collect();
+
+        for (splits, local_stats) in partials {
+            self.stats.merge(&local_stats);
+
+            for split in splits {
+                fastq.write(&split.insert)?;
+                let rec = ReadTagWriteRecord {
+                    read_id: &split.insert.id,
+                    original_read_id: None,
+                    orientation: None,
+                    status:"written",
+                    raw_cb: split
+                        .cell_id
+                        .as_ref()
+                        .map(|r| String::from_utf8_lossy(&r.seq).to_string())
+                        .unwrap_or_default(),
+                    quality_cb: split
+                        .cell_id
+                        .as_ref()
+                        .map(|r| r.qual_string() )
+                        .unwrap_or_default(),
+                    raw_umi: split
+                        .umi
+                        .as_ref()
+                        .map(|r| String::from_utf8_lossy(&r.seq).to_string())
+                        .unwrap_or_default(),
+                    quality_umi: split
+                        .umi
+                        .as_ref()
+                        .map(|r| r.qual_string() )
+                        .unwrap_or_default(),
+                };
+
+                tags.write_record(&rec)?;
+            }
+        }
+        Ok(())
+    }
+
 
     pub fn stats_report(&self) -> String {
         let info = &self.stats;
@@ -205,124 +276,5 @@ too short after adapter: {too_short}
         ReadTagTableWriter::new(writer)
     }
 
-    fn process_record(
-        &mut self,
-        rec: &rust_htslib::bam::Record,
-        extractor: &CassetteExtractor,
-        fastq: &mut FastqWriter,
-        tags: &mut ReadTagTableWriter<BufWriter<File>>,
-    ) -> Result<()> {
-        self.stats.report("total_records");
 
-        let read_name = String::from_utf8_lossy(rec.qname()).to_string();
-        let seq = rec.seq().as_bytes();
-        let qual = rec.qual().to_vec();
-
-        let cassettes = extractor.extract_both_orientations(&seq, &qual, &mut self.stats);
-
-        match cassettes.len() {
-            0 => self.stats.report("zero_cassette"),
-            1 => self.stats.report("one_cassette"),
-            _ => self.stats.report("multi_cassette"),
-        }
-
-        let (rc_seq, rc_qual) = extractor.revcomp_with_qual(&seq, &qual);
-        let mut needs_full_export = true;
-
-        for (idx, cassette) in cassettes.iter().enumerate() {
-            let mol_index = idx + 1;
-            let out_id = format!("{read_name}/mol{mol_index}");
-
-            let (oriented_seq, oriented_qual) = match cassette.orientation {
-                Orientation::Forward => (&seq[..], &qual[..]),
-                Orientation::ReverseComplement => (&rc_seq[..], &rc_qual[..]),
-            };
-
-            self.write_molecule(
-                fastq,
-                tags,
-                &out_id,
-                &read_name,
-                mol_index,
-                cassette,
-                oriented_seq,
-                oriented_qual,
-            )?;
-            needs_full_export = false;
-        }
-        if needs_full_export{
-                let out_id = format!("{read_name}/unprocessed");
-
-        fastq.write_record(&out_id, &seq, &qual)?;
-
-        self.stats.report("unprocessed_full_read_exported");
-        }
-
-        Ok(())
-    }
-
-    fn write_molecule(
-        &mut self,
-        fastq: &mut FastqWriter,
-        tags: &mut ReadTagTableWriter<BufWriter<File>>,
-        out_id: &str,
-        original_id: &str,
-        mol_index: usize,
-        cassette: &Cassette,
-        seq: &[u8],
-        qual: &[u8],
-    ) -> Result<()> {
-        let transcript_start = cassette.poly_t_start + cassette.poly_t_len;
-        let transcript_end = cassette.segment_end;
-
-        if transcript_start >= transcript_end || transcript_end > seq.len() {
-            self.stats.report("too_short_after_adapter");
-            return Ok(());
-        }
-
-        let mol_seq = &seq[transcript_start..transcript_end];
-        let mol_qual = &qual[transcript_start..transcript_end];
-
-        fastq.write_record(out_id, mol_seq, mol_qual)?;
-
-        let tag_record = ReadTagWriteRecord {
-            output_read_id: out_id,
-            original_read_id: Some(original_id),
-            molecule_index: Some(mol_index),
-            orientation: Some(cassette.orientation.as_str()),
-            adapter_start: Some(cassette.adapter_start),
-            adapter_end: Some(cassette.adapter_end),
-            segment_start: Some(transcript_start),
-            segment_end: Some(transcript_end),
-            raw_cb: Some(Self::bytes_to_string(&cassette.cb)),
-            quality_cb: Some(Self::qual_to_string(&cassette.cb_qual)),
-            raw_umi: Some(Self::bytes_to_string(&cassette.umi)),
-            quality_umi: Some(Self::qual_to_string(&cassette.umi_qual)),
-            poly_t_start: Some(cassette.poly_t_start),
-            poly_t_len: Some(cassette.poly_t_len),
-            status: "PASS",
-        };
-
-        tags.write_record(&tag_record)?;
-
-        self.stats.report("emitted_molecules");
-        self.stats.report("fastq_reads_written");
-
-        match cassette.orientation {
-            Orientation::Forward => self.stats.report("forward_molecules"),
-            Orientation::ReverseComplement => self.stats.report("reverse_molecules"),
-        }
-
-        Ok(())
-    }
-
-    fn bytes_to_string(bytes: &[u8]) -> String {
-        String::from_utf8_lossy(bytes).to_string()
-    }
-
-    fn qual_to_string(qual: &[u8]) -> String {
-        qual.iter()
-            .map(|q| char::from(q.saturating_add(33)))
-            .collect()
-    }
 }

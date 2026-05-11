@@ -24,7 +24,7 @@ pub struct ReadTagTableCli {
     pub read_tag_table: Option<PathBuf>,
 
     /// Column containing the read id / BAM query name.
-    #[arg(long = "rt-read-id-column", default_value = "output_read_id")]
+    #[arg(long = "rt-read-id-column", default_value = "read_id")]
     pub rt_read_id_column: String,
 
     /// Column containing the observed cell barcode.
@@ -343,40 +343,26 @@ fn open_maybe_gz(path: &Path) -> Result<Box<dyn Read>> {
 }
 
 
-pub const READ_TAG_TABLE_COLUMNS: [&str; 15] = [
-    "output_read_id",
+pub const READ_TAG_TABLE_COLUMNS: [&str; 8] = [
+    "read_id",
     "original_read_id",
-    "molecule_index",
     "orientation",
-    "adapter_start",
-    "adapter_end",
-    "segment_start",
-    "segment_end",
     "raw_cb",
     "quality_cb",
     "raw_umi",
     "quality_umi",
-    "poly_t_start",
-    "poly_t_len",
     "status",
 ];
 
 #[derive(Debug, Clone)]
 pub struct ReadTagWriteRecord<'a> {
-    pub output_read_id: &'a str,
+    pub read_id: &'a str,
     pub original_read_id: Option<&'a str>,
-    pub molecule_index: Option<usize>,
     pub orientation: Option<&'a str>,
-    pub adapter_start: Option<usize>,
-    pub adapter_end: Option<usize>,
-    pub segment_start: Option<usize>,
-    pub segment_end: Option<usize>,
-    pub raw_cb: Option<String>,
-    pub quality_cb: Option<String>,
-    pub raw_umi: Option<String>,
-    pub quality_umi: Option<String>,
-    pub poly_t_start: Option<usize>,
-    pub poly_t_len: Option<usize>,
+    pub raw_cb: String,
+    pub quality_cb: String,
+    pub raw_umi: String,
+    pub quality_umi: String,
     pub status: &'a str,
 }
 
@@ -399,36 +385,21 @@ impl<W: Write> ReadTagTableWriter<W> {
     }
 
     pub fn write_record(&mut self, rec: &ReadTagWriteRecord<'_>) -> Result<()> {
-        let molecule_index = opt_usize(rec.molecule_index);
-        let adapter_start = opt_usize(rec.adapter_start);
-        let adapter_end = opt_usize(rec.adapter_end);
-        let segment_start = opt_usize(rec.segment_start);
-        let segment_end = opt_usize(rec.segment_end);
-        let poly_t_start = opt_usize(rec.poly_t_start);
-        let poly_t_len = opt_usize(rec.poly_t_len);
-
         self.writer
             .write_record([
-                rec.output_read_id,
+                rec.read_id,
                 rec.original_read_id.unwrap_or(""),
-                molecule_index.as_str(),
                 rec.orientation.unwrap_or(""),
-                adapter_start.as_str(),
-                adapter_end.as_str(),
-                segment_start.as_str(),
-                segment_end.as_str(),
-                rec.raw_cb.as_deref().unwrap_or(""),
-                rec.quality_cb.as_deref().unwrap_or(""),
-                rec.raw_umi.as_deref().unwrap_or(""),
-                rec.quality_umi.as_deref().unwrap_or(""),
-                poly_t_start.as_str(),
-                poly_t_len.as_str(),
+                &rec.raw_cb,
+                &rec.quality_cb,
+                &rec.raw_umi,
+                &rec.quality_umi,
                 rec.status,
             ])
             .with_context(|| {
                 format!(
-                    "writing read-tag table row for output_read_id '{}'",
-                    rec.output_read_id
+                    "writing read-tag table row for read_id '{}'",
+                    rec.read_id
                 )
             })?;
 
@@ -470,9 +441,6 @@ impl fmt::Display for ReadTagTable {
 }
 
 
-fn opt_usize(value: Option<usize>) -> String {
-    value.map(|v| v.to_string()).unwrap_or_default()
-}
 
 
 #[cfg(test)]
@@ -499,7 +467,7 @@ mod tests {
     fn default_config(path: PathBuf) -> ReadTagTableConfig {
         ReadTagTableConfig {
             path,
-            read_id_column: "output_read_id".to_string(),
+            read_id_column: "read_id".to_string(),
             original_read_id_column: "original_read_id".to_string(),
             cell_column: "raw_cb".to_string(),
             cell_qual_column: "quality_cb".to_string(),
@@ -515,7 +483,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\toriginal_read_id\traw_cb\tquality_cb\traw_umi\tquality_umi\n",
+                "read_id\toriginal_read_id\traw_cb\tquality_cb\traw_umi\tquality_umi\n",
                 "read1\torig1\tCELL1\tIIII\tUMI1\tJJJJ\n",
                 "read2\torig2\tCELL1\tIIII\tUMI2\tJJJJ\n",
                 "read3\t\tCELL2\t\tUMI3\t\n",
@@ -529,11 +497,11 @@ mod tests {
 
         let rec = table.get("read1").unwrap();
         assert_eq!(rec.read_id, "read1");
-        assert_eq!(rec.original_read_id.as_deref(), Some("orig1"));
+        assert_eq!(rec.original_read_id.as_ref(), Some("orig1".to_string()).as_ref());
         assert_eq!(rec.cell, "CELL1");
-        assert_eq!(rec.cell_qual.as_deref(), Some("IIII"));
+        assert_eq!(rec.cell_qual.as_ref(), Some("IIII".to_string()).as_ref());
         assert_eq!(rec.umi, "UMI1");
-        assert_eq!(rec.umi_qual.as_deref(), Some("JJJJ"));
+        assert_eq!(rec.umi_qual.as_ref(), Some("JJJJ".to_string()).as_ref());
 
         let rec = table.get("read3").unwrap();
         assert_eq!(rec.original_read_id, None);
@@ -550,7 +518,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\traw_cb\traw_umi\n",
+                "read_id\traw_cb\traw_umi\n",
                 "read1\tCELL1\tUMI1\n",
                 "\tCELL2\tUMI2\n",
                 "read3\t\tUMI3\n",
@@ -574,7 +542,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\traw_cb\n",
+                "read_id\traw_cb\n",
                 "read1\tCELL1\n",
             ),
         );
@@ -600,7 +568,7 @@ mod tests {
 
         gz.write_all(
             concat!(
-                "output_read_id\traw_cb\traw_umi\n",
+                "read_id\traw_cb\traw_umi\n",
                 "read1\tCELL1\tUMI1\n",
                 "read2\tCELL2\tUMI2\n",
             )
@@ -626,7 +594,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\traw_cb\traw_umi\n",
+                "read_id\traw_cb\traw_umi\n",
                 "read1\tCELL1\tUMI1\n",
                 "read2\tCELL1\tUMI1\n",
                 "read3\tCELL1\tUMI2\n",
@@ -651,7 +619,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\traw_cb\traw_umi\n",
+                "read_id\traw_cb\traw_umi\n",
                 "r1\tCELL1\tUMI1\n",
                 "r2\tCELL1\tUMI1\n",
                 "r3\tCELL1\tUMI2\n",
@@ -709,7 +677,7 @@ mod tests {
         write_text(
             &path,
             concat!(
-                "output_read_id\traw_cb\traw_umi\n",
+                "read_id\traw_cb\traw_umi\n",
                 "read1\tCELL1\tUMI1\n",
                 "read2\tCELL2\tUMI2\n",
                 "read3\tCELL3\tUMI3\n",
@@ -738,20 +706,13 @@ mod tests {
 
             writer
                 .write_record(&ReadTagWriteRecord {
-                    output_read_id: "read1",
+                    read_id: "read1",
                     original_read_id: Some("orig1"),
-                    molecule_index: Some(7),
                     orientation: Some("Forward"),
-                    adapter_start: Some(10),
-                    adapter_end: Some(30),
-                    segment_start: Some(31),
-                    segment_end: Some(100),
-                    raw_cb: Some("CELL1".to_string()),
-                    quality_cb: Some("IIII".to_string()),
-                    raw_umi: Some("UMI1".to_string()),
-                    quality_umi: Some("JJJJ".to_string()),
-                    poly_t_start: Some(101),
-                    poly_t_len: Some(20),
+                    raw_cb: "CELL1".to_string(),
+                    quality_cb: "IIII".to_string(),
+                    raw_umi: "UMI1".to_string(),
+                    quality_umi: "JJJJ".to_string(),
                     status: "ok",
                 })
                 .unwrap();
@@ -762,6 +723,8 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
 
         assert!(text.starts_with(&READ_TAG_TABLE_COLUMNS.join("\t")));
-        assert!(text.contains("read1\torig1\t7\tForward\t10\t30\t31\t100\tCELL1\tIIII\tUMI1\tJJJJ\t101\t20\tok"));
+        assert!(text.contains(
+            "read1\torig1\tForward\tCELL1\tIIII\tUMI1\tJJJJ\tok"
+        ));
     }
 }

@@ -8,7 +8,7 @@ anyhow = "1.0.100"
 bigtools = "0.5.6"
 clap = { version = "4.5.56", features = ["derive"] }
 rayon = "1.11.0"
-rust-htslib = { git = "https://github.com/stela2502/rust-htslib" }
+rust-htslib = { git = "https://github.com/stela2502/rust-htslib.git", default-features = false }
 tempfile = "3.24.0"
 tokio = "1.49.0"
 
@@ -19,7 +19,7 @@ scdata = { version = "0.2.3", features = ["compare"] }
 gtf_splice_index = { git = "https://github.com/stela2502/gtf_splice_index" }
 
 mapping_info = "0.1.0"
-int_to_str = { package = "stela-int-to-str", version = "0.2.2" }
+int_to_str = { package = "stela-int-to-str", version = "0.2.3" }
 assert_cmd = "2.1.2"
 snp-index = { git = "https://github.com/stela2502/snp-index" }
 rand = { version = "0.8", features = ["small_rng"] }
