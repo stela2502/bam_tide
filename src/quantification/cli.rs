@@ -19,8 +19,8 @@ pub enum QuantMode {
     about = "Quantify 10x BAM against splice index into scdata, optionally collecting SNP ref/alt matrices"
 )]
 pub struct QuantCli {
-    /// Input BAM file(s) from a single cell mapping. Can be passed multiple times.
-    #[arg(short = 'b', long = "bam", required = true)]
+    /// Input BAM file(s) from a single cell mapping.
+    #[arg(short = 'b', long = "bam", required = true, num_args = 1..)]
     pub bam: Vec<PathBuf>,
 
     /// Splice index path (built from GTF beforehand)

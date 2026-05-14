@@ -20,7 +20,7 @@ pub struct ReadTagTableCli {
     /// Maps BAM query names / read IDs to observed cell barcode and UMI
     /// information. This is useful when read names are preserved after
     /// preprocessing and alignment.
-    #[arg(long = "read-tag-table")]
+    #[arg(long = "read-tag-table", num_args = 1..)]
     pub read_tag_table: Vec<PathBuf>,
 
     /// Column containing the read id / BAM query name.
