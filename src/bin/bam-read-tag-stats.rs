@@ -3,7 +3,6 @@ use bam_tide::ont_normalizer::read_tag_table::{
     PairStats, ReadTagTable, ReadTagTableCli, Summary,
 };
 use clap::Parser;
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -11,10 +10,8 @@ use std::path::PathBuf;
     version,
     about = "Summarize external read-tag tables produced by bam-ont-normalizer or compatible tools."
 )]
-struct Cli {
-    /// Input read-tag TSV, optionally .gz.
-    input: PathBuf,
 
+struct Cli {
     /// Shared read-tag table column options.
     ///
     /// For this stats command, --read-tag-table does not need to be supplied:
@@ -34,8 +31,7 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let mut read_tags = cli.read_tags;
-    read_tags.read_tag_table = Some(cli.input.clone());
+    let read_tags = cli.read_tags;
 
     let config = read_tags
         .to_config()
@@ -46,7 +42,7 @@ fn main() -> Result<()> {
     let pre = table.summarize_pairs(1, 1);
     let post = table.summarize_pairs(cli.min_pair_count, cli.min_cell_umis);
 
-    println!("Input: {}", cli.input.display());
+    println!("Input: {:?}", read_tags.read_tag_table);
     println!();
 
     println!("Rows");

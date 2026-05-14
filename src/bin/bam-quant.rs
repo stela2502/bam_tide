@@ -72,14 +72,13 @@ fn run(args: QuantCli) -> Result<()> {
         return Err(anyhow!("--vcf requires --genome"));
     }
 
-    let read_tag_table = match args.read_tags.to_config() {
-        Some(config) => {
-            let tab = ReadTagTable::from_config(&config)?;
-            println!("{tab}");
-            Some(tab)
-        },
-        None => None,
-    };
+    if !args.read_tags.read_tag_table.is_empty() && args.read_tags.read_tag_table.len() != args.bam.len() {
+        return Err(anyhow!(
+            "Number of --read-tag-table files ({}) must match number of -b/--bam files ({})",
+            args.read_tags.read_tag_table.len(),
+            args.bam.len()
+        ));
+    }
 
     let first_reader = Reader::from_path(&args.bam[0])
         .with_context(|| format!("bam file could not be read: {}", args.bam[0].display()))?;
@@ -105,12 +104,32 @@ fn run(args: QuantCli) -> Result<()> {
 
     let mut n_seen = 0usize;
 
-    for bam_path in &args.bam {
+    for (id, bam_path) in args.bam.iter().enumerate() {
         if let Some(max_reads) = args.max_reads
             && n_seen >= max_reads
         {
             break;
         }
+
+        let read_tag_table = if args.read_tags.read_tag_table.is_empty() {
+            None
+        } else {
+            let tag_path = &args.read_tags.read_tag_table[id];
+
+            let config = args.read_tags.to_config_for_id(id)?;
+
+            let tab = ReadTagTable::from_config(&config)
+                .with_context(|| {
+                    format!(
+                        "reading read tag table {} for BAM {}",
+                        tag_path.display(),
+                        bam_path.display()
+                    )
+                })?;
+
+            println!("{tab}");
+            Some(tab)
+        };
 
         process_bam_file(
             bam_path,
@@ -186,7 +205,7 @@ fn process_bam_file(
     let job_builder = JobBuilder::new(&header, chr_map)
         .with_genome(genome, !args.no_genome_refine)
         .with_snp_index(snp.map(|s| &s.index))
-        .with_read_tag_table(read_tag_table)
+        .with_read_tag_table( read_tag_table )
         .with_min_mapq(args.min_mapq)
         .read1_only(args.read1_only);
 

@@ -21,7 +21,7 @@ pub struct ReadTagTableCli {
     /// information. This is useful when read names are preserved after
     /// preprocessing and alignment.
     #[arg(long = "read-tag-table")]
-    pub read_tag_table: Option<PathBuf>,
+    pub read_tag_table: Vec<PathBuf>,
 
     /// Column containing the read id / BAM query name.
     #[arg(long = "rt-read-id-column", default_value = "read_id")]
@@ -49,16 +49,48 @@ pub struct ReadTagTableCli {
 }
 
 impl ReadTagTableCli {
-    pub fn to_config(&self) -> Option<ReadTagTableConfig> {
-        Some(ReadTagTableConfig {
-            path: self.read_tag_table.clone()?,
+    
+    /// The CLI option bam-tag-file can given multiple times - if you expect this use this function
+    pub fn to_config_for_id(&self, id: usize) -> Result<ReadTagTableConfig>{
+        if self.read_tag_table.is_empty() {
+            anyhow::bail!("No --read-tag-table files supplied");
+        }
+
+        let path = self
+            .read_tag_table
+            .get(id)
+            .with_context(|| format!("No --read-tag-table for id {id}"))?
+            .clone();
+
+        Ok(self.config_for_path( path ))
+    }
+
+    fn config_for_path(&self, path: PathBuf) -> ReadTagTableConfig {
+        ReadTagTableConfig {
+            path,
             read_id_column: self.rt_read_id_column.clone(),
             original_read_id_column: self.rt_original_read_id_column.clone(),
             cell_column: self.rt_cell_column.clone(),
             cell_qual_column: self.rt_cell_qual_column.clone(),
             umi_column: self.rt_umi_column.clone(),
             umi_qual_column: self.rt_umi_qual_column.clone(),
-        })
+        }
+    }
+
+    // The CLI option bam-tag-file can given multiple times - if you expect ONLY ONE use this function
+    pub fn to_config(&self ) -> Result<ReadTagTableConfig> {
+        if self.read_tag_table.is_empty() {
+            anyhow::bail!("No --read-tag-table files supplied");
+        }
+
+        if self.read_tag_table.len() >1  {
+            anyhow::bail!(
+                "Number of --read-tag-table files (seen {}) > 1 is not supported by this function!",
+                self.read_tag_table.len()
+            );
+        }
+
+        Ok(self.config_for_path(self.read_tag_table[0].clone()))
     }
 }
 
