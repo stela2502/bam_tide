@@ -218,7 +218,7 @@ impl BamTranscriptomeMapper {
             }
         };
 
-        if tx.strand == Strand::Minus {
+        if mapped_tx.strand == Strand::Minus {
             self.reverse_complement_record(record);
             self.stats.reverse_complemented += 1;
         }
