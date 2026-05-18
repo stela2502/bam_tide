@@ -542,7 +542,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -730,7 +730,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 [[package]]
 name = "gtf_splice_index"
 version = "0.4.3"
-source = "git+https://github.com/stela2502/gtf_splice_index#164639f9332231bd6ad46ba907f971b540c1b0b4"
+source = "git+https://github.com/stela2502/gtf_splice_index#37856a4e930fa8284423fbeb0feccb33026ccba7"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1432,7 +1432,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1717,7 +1717,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
