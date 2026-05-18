@@ -176,7 +176,7 @@ chr14\tsrc\texon\t201\t250\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transc
         // This is the real regression check:
         // the index was built from "chr14", but lookup by "14" must work.
         let chr_id = idx
-            .chr_id("14")
+            .chr_id("chr14")
             .expect("expected chr14 index to resolve plain chromosome alias '14'");
 
         let mut spliced = SplicedRead::new(
