@@ -167,7 +167,7 @@ impl<'a> JobBuilder<'a> {
         let chr_id = match self.chr_map.get(chr_name) {
             Some(&id) => id,
             None => {
-                report.report(&format!("contig {chr_name} not in index");
+                report.report(&format!("contig {chr_name} not in index"));
                 return Ok(None);
             }
         };
