@@ -159,15 +159,25 @@ chr14\tsrc\texon\t201\t250\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transc
             .unwrap()
     }
 
+    fn build_14_index() -> SpliceIndex {
+        let gtf = "\
+14\tsrc\texon\t101\t150\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transcript_id \"T1\";\n\
+14\tsrc\texon\t201\t250\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transcript_id \"T1\";\n";
+
+        SpliceIndex::new(100)
+            .from_reader(Cursor::new(gtf.as_bytes()), IdNameKeys::default())
+            .unwrap()
+    }
+
     #[test]
-    fn chunk_processor_matches_read_when_job_uses_plain_14_against_chr14_index() {
+    fn chunk_processor_matches_read_when_job_uses_plain_chr14_against_14_index() {
         let idx = build_chr14_index();
 
         // This is the real regression check:
         // the index was built from "chr14", but lookup by "14" must work.
         let chr_id = idx
-            .chr_id("14")
-            .expect("expected chr14 index to resolve plain chromosome alias '14'");
+            .chr_id("chr14")
+            .expect("expected 14 index to resolve plain chromosome alias 'chr14'");
 
         let mut spliced = SplicedRead::new(
             chr_id,
