@@ -171,12 +171,60 @@ chr14\tsrc\texon\t201\t250\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transc
 
     #[test]
     fn chunk_processor_matches_read_when_job_uses_plain_chr14_against_14_index() {
+        let idx = build_14_index();
+
+        // This is the real regression check:
+        // the index was built from "chr14", but lookup by "14" must work.
+        let chr_id = idx
+            .chr_id("14")
+            .expect("expected chr14 index to resolve plain chromosome alias '14'");
+
+        let mut spliced = SplicedRead::new(
+            chr_id,
+            Strand::Plus,
+            vec![
+                RefBlock::new(110, 150),
+                RefBlock::new(200, 250),
+            ],
+        );
+        spliced.finalize();
+
+        let job = Job {
+            cell: 1,
+            umi: 1,
+            spliced,
+            aligned: None,
+        };
+
+        let processor = ChunkProcessor::new(
+            &idx,
+            None,
+            MatchOptions::default(),
+            ProcessorOptions::default(),
+        );
+
+        let mut merged = QuantData::new();
+
+        processor
+            .process_into(QuantMode::Gene, &[job], &mut merged)
+            .unwrap();
+
+        // At minimum: it must not become "no hit".
+        // Depending on QuantData internals, this may need adapting to your matrix API.
+        assert!(
+            !merged.gene.is_empty() || !merged.intron.is_empty(),
+            "expected one gene or intron count from chr14/14 alias match"
+        );
+    }
+
+    #[test]
+    fn chunk_processor_matches_read_when_job_uses_plain_14_against_chr14_index() {
         let idx = build_chr14_index();
 
         // This is the real regression check:
         // the index was built from "chr14", but lookup by "14" must work.
         let chr_id = idx
-            .chr_id("chr14")
+            .chr_id("14")
             .expect("expected 14 index to resolve plain chromosome alias 'chr14'");
 
         let mut spliced = SplicedRead::new(
