@@ -139,3 +139,71 @@ impl<'a> ChunkProcessor<'a> {
         );
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gtf_splice_index::{IdNameKeys, RefBlock, SplicedRead, Strand};
+    use std::io::Cursor;
+
+    fn build_chr14_index() -> SpliceIndex {
+        let gtf = "\
+chr14\tsrc\texon\t101\t150\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transcript_id \"T1\";\n\
+chr14\tsrc\texon\t201\t250\t.\t+\t.\tgene_id \"G1\"; gene_name \"Gene1\"; transcript_id \"T1\";\n";
+
+        SpliceIndex::new(100)
+            .from_reader(Cursor::new(gtf.as_bytes()), IdNameKeys::default())
+            .unwrap()
+    }
+
+    #[test]
+    fn chunk_processor_matches_read_when_job_uses_plain_14_against_chr14_index() {
+        let idx = build_chr14_index();
+
+        // This is the real regression check:
+        // the index was built from "chr14", but lookup by "14" must work.
+        let chr_id = idx
+            .chr_id("14")
+            .expect("expected chr14 index to resolve plain chromosome alias '14'");
+
+        let mut spliced = SplicedRead::new(
+            chr_id,
+            Strand::Plus,
+            vec![
+                RefBlock::new(110, 150),
+                RefBlock::new(200, 250),
+            ],
+        );
+        spliced.finalize();
+
+        let job = Job {
+            cell: 1,
+            umi: 1,
+            spliced,
+            aligned: None,
+        };
+
+        let processor = ChunkProcessor::new(
+            &idx,
+            None,
+            MatchOptions::default(),
+            ProcessorOptions::default(),
+        );
+
+        let mut merged = QuantData::new();
+
+        processor
+            .process_into(QuantMode::Gene, &[job], &mut merged)
+            .unwrap();
+
+        // At minimum: it must not become "no hit".
+        // Depending on QuantData internals, this may need adapting to your matrix API.
+        assert!(
+            !merged.gene.is_empty() || !merged.intron.is_empty(),
+            "expected one gene or intron count from chr14/14 alias match"
+        );
+    }
+}
