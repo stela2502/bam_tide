@@ -27,3 +27,20 @@ impl From<&QuantCli> for ProcessorOptions {
         }
     }
 }
+
+impl Default for ProcessorOptions {
+    fn default() -> Self {
+        Self {
+            min_mapq: 0,
+            read1_only: false,
+            require_strand: false,
+            quant_mode: QuantMode::Gene,
+
+            rt_cell_column: "raw_cb".to_string(),
+            rt_cell_qual_column: "quality_cb".to_string(),
+
+            rt_umi_column: "raw_umi".to_string(),
+            rt_umi_qual_column: "quality_umi".to_string(),
+        }
+    }
+}
