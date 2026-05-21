@@ -1,5 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context};
 use std::io::Write;
+
+use gtf_splice_index::{Transcript, Strand};
+use snp_index::Genome;
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FastaRecord {
@@ -112,7 +116,7 @@ const DNA_COMPLEMENT: [u8; 256] = {
 #[test]
 fn fasta_record_from_transcript_builds_strand_oriented_mrna() {
     use crate::core::fasta::FastaRecord;
-    use crate::snp_index::Genome;
+    use snp_index::Genome;
     use gtf_splice_index::types::{RefBlock, Strand};
     use gtf_splice_index::Transcript;
 

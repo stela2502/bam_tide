@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+
 use clap::{Args, Parser, Subcommand};
 
 use gtf_splice_index::{IdNameKeys, SpliceIndex}; // <-- adjust crate path/module as needed
 use bam_tide::core::fasta::FastaRecord;
+use snp_index::Genome;
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -26,8 +28,11 @@ enum Command {
     /// Load an index from disk and print summary stats
     Stats(StatsArgs),
 
+/*
     /// Query transcripts covering a genomic position
     Query(QueryArgs),
+
+*/
 
     /// Build transcriptome FASTA from genomic annotation + genome FASTA
     Transcriptome(TranscriptomeArgs),
@@ -80,6 +85,7 @@ struct TranscriptomeArgs {
     line_width: usize,
 }
 
+/*
 #[derive(Args, Debug)]
 struct QueryArgs {
     /// Build the splice index directly from this GTF/GFF annotation file.
@@ -128,6 +134,7 @@ struct QueryArgs {
     #[arg(long, short = 'p', required_unless_present = "region")]
     pos: Option<u32>,
 }
+*/
 
 #[derive(Args, Debug)]
 struct BuildArgs {
@@ -230,6 +237,10 @@ fn main() -> Result<()> {
                 .with_context(|| format!("writing index to {}", args.index.display()))?;
 
             eprintln!("Index written to {}", args.index.display());
+        }
+
+        Command::Transcriptome(args) => {
+            build_transcriptome(&args)?
         }
 
         Command::Stats(args) => {
@@ -347,7 +358,7 @@ fn build_transcriptome(args: &TranscriptomeArgs) -> Result<()> {
         n_written,
         args.out.display()
     );
-    OK()
+    Ok(())
 }
 
 

@@ -123,7 +123,7 @@ impl FastqRecord {
     pub fn revcomp_seq(seq: &[u8]) -> Vec<u8> {
         seq.iter()
             .rev()
-            .map(|&b| complement(b))
+            .map(|&b| Self::complement(b))
             .collect()
     }
 
