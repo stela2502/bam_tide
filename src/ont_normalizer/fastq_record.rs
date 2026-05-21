@@ -113,18 +113,18 @@ impl FastqRecord {
     }
 
     pub fn revcomp(&self, id: impl Into<String>) -> Self {
-        let mut rc_seq = Vec::with_capacity(self.seq.len());
-        let mut rc_qual = Vec::with_capacity(self.qual.len());
+        let rc_seq = Self::revcomp_seq(&self.seq);
 
-        for base in self.seq.iter().rev() {
-            rc_seq.push(Self::complement(*base));
-        }
-
-        for q in self.qual.iter().rev() {
-            rc_qual.push(*q);
-        }
+        let rc_qual: Vec<u8> = self.qual.iter().rev().copied().collect();
 
         Self::new(id, &rc_seq, &rc_qual)
+    }
+    
+    pub fn revcomp_seq(seq: &[u8]) -> Vec<u8> {
+        seq.iter()
+            .rev()
+            .map(|&b| complement(b))
+            .collect()
     }
 
     #[inline(always)]
