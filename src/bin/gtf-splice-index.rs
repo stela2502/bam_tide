@@ -50,12 +50,12 @@ struct StatsArgs {
 
 #[derive(Args, Debug)]
 struct TranscriptomeArgs {
-    /// Genomic GTF/GFF annotation used to define transcripts and exon structure.
+    /// Genomic GTF/GFF or binary gtf-splice-index used to define transcripts and exon structure.
     ///
     /// The annotation remains in genomic coordinates. This command only emits
     /// transcript sequences extracted from the genome FASTA.
     #[arg(long, short = 'a')]
-    annotation: PathBuf,
+    index: PathBuf,
 
     /// Genome FASTA used as sequence source.
     ///
@@ -255,11 +255,22 @@ fn main() -> Result<()> {
 
 
 fn build_transcriptome(args: &TranscriptomeArgs) -> Result<()> {
-    let index = SpliceIndex::from_path(
-        &args.annotation,
-        args.bin_width,
-        IdNameKeys::default(),
-    )
+    let index = if args
+        .index
+        .extension()
+        .map(|e| e == "dat")
+        .unwrap_or(false)
+    {
+        SpliceIndex::load(&args.source)
+            .with_context(|| format!("reading splice index {}", args.source.display()))?
+    } else {
+        SpliceIndex::from_path(
+            &args.source,
+            args.bin_width,
+            IdNameKeys::default(),
+        )
+        .with_context(|| format!("building index from {}", args.source.display()))?
+    };
     .with_context(|| {
         format!(
             "failed to build splice index from {}",
