@@ -1,175 +1,173 @@
 # bam-subset-tag
 
-`bam-subset-tag` splits a BAM file into multiple BAM files based on the value of a given tag (e.g. CB, CR, UB).
+`bam-subset-tag` splits a BAM file into multiple output BAM files based on BAM tag values.
 
-Each input list file defines one output BAM.  
-Each line in a list file represents one accepted tag value.
+Each supplied list file defines one subset output BAM.
 
-## Status
+The tool is particularly useful for:
 
-Utility tool.
+- cell barcode extraction
+- experimental partitioning
+- targeted re-analysis
+- debugging workflows
+- and generation of smaller test datasets
 
-Stable and intended for regular use in debugging, filtering, and workflow preparation.
+---
 
-## What it does
+# Typical Use Cases
 
-- reads a BAM file
-- extracts a specified tag from each read
-- matches the tag value against one or more input lists
-- writes reads into separate BAM files per list
+- extracting selected cell populations
+- splitting BAMs by barcode groups
+- isolating experimental subsets
+- debugging single-cell workflows
+- generating reduced-size BAMs for testing
 
-Optionally:
+---
 
-- writes unmatched reads into a separate BAM
-
-## Basic usage
+# Basic Usage
 
 ```bash
 bam-subset-tag \
   --bam input.bam \
-  --tag CR \
-  --list cluster_a.txt cluster_b.txt \
-  --prefix out/subset_
+  --list selected_cells.txt \
+  --prefix subset
 ```
 
-## Input format
+---
 
-Each list file contains one tag value per line:
+# Multiple Output Groups
 
-```text
-AAACCCAAGGAGAGTA
-TTTGGGCCCAAATTTG
-...
-```
+Multiple list files may be supplied.
 
-Empty lines and lines starting with `#` are ignored.
-
-## Output
-
-For each list file:
-
-```text
-out/subset_<listname>.bam
-```
+Each list file creates one output BAM.
 
 Example:
 
 ```bash
---list cluster_a.txt cluster_b.txt
---prefix out/subset_
+bam-subset-tag \
+  --bam input.bam \
+  --tag CB \
+  --list tumor_cells.txt \
+  --list immune_cells.txt \
+  --prefix subsets/sample
 ```
 
-Produces:
+This generates separate BAM files for:
+
+- tumor cells
+- immune cells
+
+based on barcode membership.
+
+---
+
+# Input List Format
+
+Each list file contains one accepted tag value per line.
+
+Example:
 
 ```text
-out/subset_cluster_a.bam
-out/subset_cluster_b.bam
+AAACCCAAGGTT
+AAACCCATCGTA
+AAACGGTTCGAT
 ```
 
-If enabled:
+---
+
+# BAM Tags
+
+The tool can match any two-character BAM tag.
+
+Common examples:
+
+| Tag | Meaning |
+|---|---|
+| `CB` | Corrected cell barcode |
+| `CR` | Raw cell barcode |
+| `UB` | Corrected UMI |
+| `UR` | Raw UMI |
+
+Default:
 
 ```text
-out/subset_unmatched.bam
+CR
 ```
 
-## Options
+---
 
-```text
--b, --bam <BAM>            Input BAM file
+# Writing Unmatched Reads
 
--t, --tag <TAG>            BAM tag to match (default: CR)
+Optional unmatched-read output:
 
--l, --list <LISTS>         One or more files containing tag values
-
--p, --prefix <PREFIX>      Output prefix (directory + filename prefix)
-
-    --write-unmatched      Also write unmatched reads
+```bash
+--write-unmatched
 ```
 
-## Typical use cases
+This creates an additional BAM file containing reads that did not match any supplied tag list.
 
-### Extract specific cells
+Useful for:
+
+- QC
+- debugging
+- completeness checks
+- and workflow validation
+
+---
+
+# Example
 
 ```bash
 bam-subset-tag \
-  --bam full.bam \
+  --bam sc_reads.bam \
   --tag CB \
   --list selected_cells.txt \
-  --prefix subset/
+  --prefix subsets/cells \
+  --threads 8
 ```
 
-### Split clusters into separate BAMs
+---
 
-```bash
-bam-subset-tag \
-  --bam full.bam \
-  --tag CR \
-  --list cluster_a.txt cluster_b.txt cluster_c.txt \
-  --prefix clusters/
+# Output Structure
+
+Outputs are written using the supplied prefix.
+
+Example:
+
+```text
+subsets/cells_selected_cells.bam
 ```
 
-### Debug problematic reads
+and optionally:
 
-```bash
-bam-subset-tag \
-  --bam full.bam \
-  --tag UB \
-  --list suspicious_umis.txt \
-  --prefix debug/ \
-  --write-unmatched
+```text
+subsets/cells_unmatched.bam
 ```
 
-## Supported tag types
+---
 
-The tool supports multiple BAM tag types:
+# Performance Notes
 
-- string tags (e.g. CB, CR, UB)
-- numeric tags (converted to string)
-- character tags
+The tool streams the BAM file directly and performs tag matching in memory.
 
-Matching is exact.
+Threading currently accelerates:
 
-## Notes
+- BAM decompression
+- BGZF reading
+- BGZF writing
 
-- tag must be exactly two characters
-- input BAM must contain the specified tag
-- chromosome naming / alignment is not modified
-- output BAMs retain original alignments and flags
+but does not parallelize downstream filtering logic.
 
-## Performance
+---
 
-- streaming BAM processing
-- minimal memory overhead
-- suitable for large BAM files
-- performance scales with disk IO
+# Typical Workflow Position
 
-## Relationship to other tools
-
-`bam-subset-tag` is often used together with:
-
-- [`bam-quant`](./bam-quant.md)  
-  → subset cells before quantification
-
-- [`bam-ont-normalizer`](./bam-ont-normalizer.md)  
-  → filter normalized ONT reads
-
-- [`bam-coverage`](./bam-coverage.md)  
-  → compute coverage on subsets
-
-## Design philosophy
-
-`bam-subset-tag` is intentionally simple:
-
-- no fuzzy matching
-- no implicit grouping
-- no hidden assumptions
-
-Each output BAM corresponds exactly to a user-defined set of tag values.
-
-This makes it reliable for debugging and reproducible filtering.
-
-## See also
-
-- [`bam-quant`](./bam-quant.md)
-- [`bam-coverage`](./bam-coverage.md)
-- [`bam-ont-normalizer`](./bam-ont-normalizer.md)
+```text
+Single-cell BAM
+  ↓
+bam-subset-tag
+  ↓
+subset BAMs
+  ↓
+targeted analysis or debugging
+```

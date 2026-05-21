@@ -1,225 +1,283 @@
 # bam-quant
 
-`bam-quant` performs single-cell-aware quantification of BAM files against a GTF-derived splice index.
+`bam-quant` is the core quantification engine of the `bam_tide` toolkit.
 
-It is designed as a flexible alternative to fixed pipelines such as Cell Ranger, allowing direct control over how reads are interpreted, matched, and counted.
+The tool quantifies single-cell BAM alignments against a compiled splice index and produces sparse matrix outputs compatible with downstream single-cell analysis workflows.
 
-## Status
-
-`bam-quant` is experimental.
-
-The core ideas and data model are stable, but details of matching, filtering, and output may evolve.
-
-Results should always be validated against known datasets.
-
-## What it does
-
-`bam-quant`:
-
-1. Reads a BAM file (typically 10x-style)
-2. Extracts cell barcodes (CB) and UMIs (UB)
-3. Matches reads against a splice index derived from a GTF
-4. Classifies reads (exonic, intronic, junction-aware)
-5. Optionally matches SNPs (if VCF + genome are provided)
-6. Produces sparse matrices (scdata format)
-
-It supports:
+The quantifier supports:
 
 - gene-level quantification
 - transcript-level quantification
-- optional intronic separation
-- optional SNP ref/alt counting
+- ONT long-read workflows
+- multi-BAM merged analysis
+- external read-tag tables
+- and optional SNP-aware quantification
 
-## Why use it?
+The tool is designed for direct integration into high-throughput sequencing pipelines and large-scale HPC workflows.
 
-Standard pipelines like Cell Ranger:
+---
 
-- require strict reference formats
-- hide matching logic
-- limit flexibility
+# Typical Use Cases
 
-`bam-quant` is built for:
+- ONT single-cell quantification
+- transcript-level counting
+- barcode-aware quantification
+- SNP-aware expression analysis
+- transcriptome-first workflows
+- large sparse matrix generation
 
-- custom GTFs
-- alternative transcript models
-- exploratory single-cell analysis
-- integration with SNP-aware workflows
-- explicit control over read classification
+---
 
-## Conceptual model
-
-`bam-quant` works on two key abstractions:
-
-### SplicedRead
-
-A read represented as genomic blocks (exons/introns) derived from BAM alignment.
-
-This is used for:
-
-- gene matching
-- transcript matching
-- splice-aware classification
-
-### AlignedRead (optional)
-
-A refined, genome-aware representation of the read.
-
-Used for:
-
-- SNP matching
-- base-level inspection
-- quality filtering
-
-### Splice Index
-
-Built from a GTF file.
-
-Contains:
-
-- genes
-- transcripts
-- exon structures
-- genomic bins for fast lookup
-
-### SNP Index (optional)
-
-Built from a VCF file.
-
-Used to:
-
-- identify SNP positions
-- classify observed bases as ref/alt/other
-
-## Pipeline
-
-The internal pipeline is:
-
-1. Load splice index (GTF-derived)
-2. Optionally load genome FASTA
-3. Optionally load SNP index (VCF)
-4. Stream BAM records:
-   - extract CB / UB
-   - build `SplicedRead`
-   - optionally build `AlignedRead`
-5. Chunk processing (parallel):
-   - match reads to genes/transcripts
-   - classify matches
-   - optionally match SNPs
-6. Accumulate counts per cell
-7. Write sparse matrices
-
-## Basic usage
+# Basic Usage
 
 ```bash
 bam-quant \
-  --bam input.bam \
-  --index splice.index \
-  --outpath quant
+  --bam mapped.bam \
+  --index gencode.v49.annotation.gtf.dat \
+  --outpath quant_out
 ```
 
-## Gene vs transcript mode
+---
+
+# Transcript Quantification
 
 ```bash
---quant-mode gene
---quant-mode transcript
+bam-quant \
+  --bam mapped.bam \
+  --index gencode.v49.annotation.gtf.dat \
+  --quant-mode transcript \
+  --outpath quant_out
 ```
 
-Gene mode collapses transcript structure.  
-Transcript mode retains isoform-level resolution.
+Supported modes:
 
-## Intronic reads
+- `gene`
+- `transcript`
+
+---
+
+# Multi-BAM Quantification
+
+Multiple BAM files may be quantified together in one run.
+
+This is useful for:
+
+- re-sequencing runs
+- lane merges
+- repeated ONT sequencing
+- or workflow partitioning
+
+Example:
+
+```bash
+bam-quant \
+  --bam sample1.bam sample2.bam sample3.bam \
+  --index gencode.v49.annotation.gtf.dat \
+  --outpath merged_quant
+```
+
+All counts are accumulated into one shared output matrix.
+
+---
+
+# External Read-Tag Tables
+
+Optional external read-tag tables may be supplied.
+
+These tables map:
+
+```text
+read_id → cell barcode + UMI
+```
+
+and are useful when preprocessing pipelines preserve read names during alignment.
+
+Example:
+
+```bash
+bam-quant \
+  --bam sample1.bam sample2.bam \
+  --read-tag-table sample1.tags.tsv sample2.tags.tsv \
+  --index gencode.v49.annotation.gtf.dat \
+  --outpath quant_out
+```
+
+BAM files and read-tag tables are paired by argument order.
+
+---
+
+# SNP-Aware Quantification
+
+Optional SNP quantification can be enabled using:
+
+```bash
+--vcf variants.vcf
+```
+
+This generates additional sparse matrices containing:
+
+- reference allele counts
+- alternative allele counts
+
+per cell.
+
+SNP quantification requires:
+
+```bash
+--genome
+```
+
+because reads are refined against the genomic reference sequence.
+
+Example:
+
+```bash
+bam-quant \
+  --bam mapped.bam \
+  --index gencode.v49.annotation.gtf.dat \
+  --genome GRCh38.fa.gz \
+  --vcf variants.vcf \
+  --outpath quant_out
+```
+
+---
+
+# Output Structure
+
+Outputs are written in sparse matrix format compatible with many downstream single-cell workflows.
+
+Typical outputs include:
+
+```text
+matrix.mtx.gz
+features.tsv.gz
+barcodes.tsv.gz
+```
+
+Additional SNP matrices may also be generated.
+
+---
+
+# Splice Matching Behavior
+
+The quantifier performs splice-aware transcript matching using the compiled splice index.
+
+Optional strictness settings include:
+
+| Option | Description |
+|---|---|
+| `--require-strand` | Require strand-compatible matching |
+| `--require-exact-junction-chain` | Require exact splice junction chains |
+| `--max-5p-overhang-bp` | Allowed 5′ overhang |
+| `--max-3p-overhang-bp` | Allowed 3′ overhang |
+| `--allowed-intronic-gap-size` | Allowed sequencing error gap |
+
+These settings are mainly intended for advanced tuning and experimental workflows.
+
+---
+
+# Intronic Splitting
+
+Optional intronic splitting:
 
 ```bash
 --split-intronic
 ```
 
-Separates intronic counts into a separate matrix.
+attempts to separate intronic from exonic assignments.
 
-Note:
+This mode is currently considered experimental for many real sequencing datasets.
 
-> Intronic classification is currently strict and may undercount in noisy data.
+---
 
-## SNP-aware mode
+# Performance Notes
 
-Requires both genome and VCF:
+`bam-quant` is designed for:
+
+- large BAM files
+- parallel execution
+- streaming quantification
+- and memory-efficient sparse matrix generation
+
+Threading is controlled using:
+
+```bash
+--threads 16
+```
+
+depending on available compute resources.
+
+---
+
+# Typical Workflow
+
+```text
+ONT BAM
+  ↓
+bam-ont-normalizer
+  ↓
+transcriptome alignment
+  ↓
+bam-transcriptome-to-genome
+  ↓
+bam-quant
+  ↓
+sparse matrices
+```
+
+---
+
+# Important Inputs
+
+## Splice Index
+
+The splice index must first be generated using:
+
+```text
+gtf-splice-index
+```
+
+Example:
+
+```bash
+gtf-splice-index \
+  --gtf gencode.v49.annotation.gtf \
+  --out gencode.v49.annotation.gtf.dat
+```
+
+---
+
+## Genome Refinement
+
+When:
+
+```bash
+--genome
+```
+
+is supplied, reads may be refined against the genomic reference before quantification.
+
+This improves SNP-aware processing and transcript matching in some workflows.
+
+Genome refinement may be disabled explicitly:
+
+```bash
+--no-genome-refine
+```
+
+---
+
+# Example Full Workflow
 
 ```bash
 bam-quant \
-  --bam input.bam \
-  --index splice.index \
-  --genome genome.fa \
-  --vcf variants.vcf \
-  --outpath quant
+  --bam results/*.genomic.bam \
+  --read-tag-table results/*.tags.tsv \
+  --index gencode.v49.annotation.gtf.dat \
+  --genome GRCh38.p14.genome.fa.gz \
+  --vcf SNPs.vcf \
+  --quant-mode transcript \
+  --threads 16 \
+  --min-cell-counts 1 \
+  --outpath merged_quant
 ```
-
-Produces:
-
-- main matrix
-- SNP reference matrix
-- SNP alternate matrix
-
-## Matching behaviour
-
-Matching is controlled by parameters such as:
-
-- strand requirement
-- junction chain matching
-- overhang tolerance
-- allowed intronic gaps
-
-These affect how strictly reads must match transcript structures.
-
-## Output
-
-`bam-quant` writes sparse matrices in `scdata` format.
-
-Typical outputs:
-
-- gene / transcript matrix
-- optional intronic matrix
-- optional SNP ref matrix
-- optional SNP alt matrix
-
-These can be imported into:
-
-- Python (AnnData)
-- R (Seurat / SingleCellExperiment)
-
-## Performance
-
-Designed for:
-
-- large BAM files
-- multi-core processing
-- streaming execution
-- minimal memory overhead
-
-Parallelization is done in chunks using Rayon.
-
-## Limitations
-
-- matching rules are still evolving
-- intronic classification is strict
-- SNP matching depends on read quality and alignment correctness
-- requires consistent CB/UB tagging in BAM
-
-## Philosophy
-
-`bam-quant` does not try to hide complexity.
-
-Instead, it exposes:
-
-- how reads are interpreted
-- how matches are decided
-- how counts are generated
-
-This makes it suitable for:
-
-- debugging pipelines
-- custom analysis workflows
-- research use cases
-
-## See also
-
-- [`bam-coverage`](./bam-coverage.md)
-- [`bam-ont-normalizer`](./bam-ont-normalizer.md)

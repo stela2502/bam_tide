@@ -1,186 +1,211 @@
 # gtf-splice-index
 
-`gtf-splice-index` builds and inspects splice indexes from genome annotation files.
+`gtf-splice-index` builds and inspects serialized splice indexes derived from transcript annotations.
 
-The resulting index is used by `bam-quant` to match aligned reads against genes, transcripts, exons, introns, and splice junction structures.
+The generated index is a compact binary representation of:
 
-## Status
+- transcripts
+- exons
+- splice structures
+- gene metadata
+- transcript metadata
+- and genomic interval bins
 
-Experimental, but central to `bam-quant`.
+The index is designed for fast splice-aware matching during:
 
-The index format and matching logic may still evolve.
+- quantification
+- transcript projection
+- and long-read processing workflows
 
-## What it does
+within the `bam_tide` ecosystem.
 
-`gtf-splice-index` reads an annotation file and builds a serialized splice index.
+---
 
-Supported annotation-style inputs include:
+# Typical Use Cases
+
+- preprocessing transcript annotations
+- building reusable splice indexes
+- transcript-aware quantification
+- splice-aware matching
+- transcriptome projection workflows
+
+---
+
+# Basic Workflow
+
+```text
+GTF/GFF
+  ↓
+gtf-splice-index build
+  ↓
+serialized splice index
+  ↓
+bam-quant
+bam-transcriptome-to-genome
+```
+
+---
+
+# Building an Index
+
+```bash
+gtf-splice-index build \
+  --annotation gencode.v49.annotation.gtf \
+  --index gencode.v49.annotation.gtf.dat
+```
+
+---
+
+# Inspecting an Index
+
+```bash
+gtf-splice-index stats \
+  --index gencode.v49.annotation.gtf.dat
+```
+
+This prints summary statistics describing the serialized index contents.
+
+---
+
+# Input Formats
+
+The builder supports:
 
 - GTF
 - GFF
 - GFF3
 
-The index stores:
+annotation files.
 
-- genes
-- transcripts
-- exon blocks
-- chromosome / contig structure
-- binned genomic lookup tables
+---
 
-This makes read matching much faster during quantification.
+# Output
 
-## Why it exists
-
-`bam-quant` should not parse a full GTF file for every run.
-
-Instead, the annotation is preprocessed once:
-
-```bash
-gtf-splice-index build \
-  --annotation genes.gtf \
-  --index genes.splice.idx
-```
-
-Then reused:
-
-```bash
-bam-quant \
-  --bam sample.bam \
-  --index genes.splice.idx \
-  --outpath quant
-```
-
-## Build an index
-
-```bash
-gtf-splice-index build \
-  --annotation genes.gtf \
-  --index genes.splice.idx
-```
-
-By default, the bin width is:
+The generated index is written as a serialized binary file:
 
 ```text
-1,000,000 bp
+gencode.v49.annotation.gtf.dat
 ```
 
-You can change it:
+This file can later be loaded directly by:
+
+- `bam-quant`
+- `bam-transcriptome-to-genome`
+- and related workflows
+
+without repeatedly parsing the original annotation.
+
+---
+
+# Example
 
 ```bash
 gtf-splice-index build \
-  --annotation genes.gtf \
-  --index genes.splice.idx \
-  --bin-width 1000000
+  --annotation stringtie.gff \
+  --index stringtie.gff.dat
 ```
 
-## Inspect an index
+---
+
+# Annotation Customization
+
+The builder supports configurable annotation keys for compatibility with different GTF/GFF conventions.
+
+Examples include:
+
+| Option | Meaning |
+|---|---|
+| `--gene-id-key` | Gene ID attribute |
+| `--gene-name-key` | Gene name attribute |
+| `--transcript-id-key` | Transcript ID attribute |
+| `--transcript-name-key` | Transcript name attribute |
+| `--parent-key` | GFF3 exon→transcript linkage |
+| `--exon-feature-type` | Features treated as exons |
+
+This improves compatibility with:
+
+- Gencode
+- Ensembl
+- StringTie
+- and custom transcript annotations
+
+---
+
+# Bin Width
 
 ```bash
-gtf-splice-index stats \
-  --index genes.splice.idx
+--bin-width 1000000
 ```
 
-This prints a summary of the serialized index, for example:
+controls genomic interval binning used internally for efficient overlap lookup.
+
+The default value works well for most workflows.
+
+Advanced users may tune this depending on:
+
+- genome size
+- transcript density
+- and workload characteristics
+
+---
+
+# Performance Notes
+
+Building the splice index is usually a one-time preprocessing step.
+
+The serialized index is optimized for:
+
+- fast loading
+- repeated reuse
+- low-overhead transcript lookup
+- and splice-aware matching
+
+during downstream analysis.
+
+---
+
+# Typical Workflow Context
 
 ```text
-SpliceIndex: 78691 genes, 507365 transcripts, 25 chromosomes, bin_width=1000000 bp
+annotation.gtf
+  ↓
+gtf-splice-index build
+  ↓
+annotation.gtf.dat
+  ↓
+bam-quant
 ```
 
-## Attribute keys
+or:
 
-Different annotation sources use different attribute names.
-
-For standard GTF files, the defaults are:
-
-| Meaning | Default key |
-|---|---|
-| Gene ID | `gene_id` |
-| Gene name | `gene_name` |
-| Transcript ID | `transcript_id` |
-| Transcript name | `transcript_name` |
-| Exon feature type | `exon` |
-
-For GFF3-style annotations, exon-to-transcript linkage usually uses:
-
-| Meaning | Default key |
-|---|---|
-| Parent transcript | `Parent` |
-
-## Custom attribute keys
-
-You can override attribute keys if your annotation uses non-standard names.
-
-Example:
-
-```bash
-gtf-splice-index build \
-  --annotation annotation.gff3 \
-  --index annotation.splice.idx \
-  --gene-id-key ID \
-  --gene-name-key Name \
-  --transcript-id-key transcript_id \
-  --parent-key Parent
+```text
+annotation.gtf
+  ↓
+gtf-splice-index build
+  ↓
+annotation.gtf.dat
+  ↓
+bam-transcriptome-to-genome
 ```
 
-Multiple keys can be provided.
+---
 
-Example:
+# Important Notes
 
-```bash
-gtf-splice-index build \
-  --annotation annotation.gtf \
-  --index annotation.splice.idx \
-  --gene-id-key gene_id geneID GeneID \
-  --gene-name-key gene_name geneName Name
-```
+## Transcript IDs must remain consistent
 
-The index builder will try the provided keys when extracting identifiers and names.
+The transcript IDs stored in the splice index must match:
 
-## Exon feature types
+- transcriptome FASTA identifiers
+- transcriptome BAM reference names
+- and downstream workflow annotations
 
-By default, only features with type `exon` are treated as exon blocks.
+Inconsistent transcript naming is one of the most common causes of projection and quantification failures.
 
-You can provide additional feature types:
+---
 
-```bash
-gtf-splice-index build \
-  --annotation annotation.gff3 \
-  --index annotation.splice.idx \
-  --exon-feature-type exon CDS
-```
+## Reusable binary format
 
-Use this carefully. Including `CDS` changes the biological meaning of the index and may affect quantification.
+The serialized index is intended to replace repeated parsing of large text-based annotations during high-throughput workflows.
 
-## Relationship to bam-quant
-
-`bam-quant` depends on this index.
-
-The splice index allows `bam-quant` to:
-
-- find candidate genes quickly
-- match reads to transcript structures
-- classify exon-compatible reads
-- detect exact junction chains
-- distinguish intronic from exonic signal
-
-## Notes and limitations
-
-The quality of the index depends on the quality of the annotation.
-
-Common problems include:
-
-- missing transcript IDs
-- inconsistent gene/transcript relationships
-- mixed GTF/GFF3 conventions
-- contig names that do not match the BAM
-- annotations with unexpected feature types
-
-If read matching gives surprising results, inspect both:
-
-1. the annotation used to build the index
-2. the chromosome names in the BAM header
-
-## See also
-
-- [`bam-quant`](./bam-quant.md)
+This significantly improves startup time and scalability for large sequencing datasets.

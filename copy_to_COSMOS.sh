@@ -1,6 +1,7 @@
 #! bash
 
-for exe in bam-quant bam-coverage bw-compare; do
-    cp "target/x86_64-unknown-linux-musl/release/$exe" \
-       "/home/med-sal/sens05_home/bin/"
-done
+find target/x86_64-unknown-linux-musl/release/ \
+	-maxdepth 1 \
+	-type f \
+	-executable \
+	-exec cp {} /home/med-sal/sens05_home/bin/ \;

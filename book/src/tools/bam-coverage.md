@@ -1,39 +1,37 @@
 # bam-coverage
 
-`bam-coverage` summarizes aligned BAM reads into genomic coverage tracks.
+`bam-coverage` generates genomic coverage tracks from BAM files.
 
-It is intended as a fast Rust-based alternative to tools such as `deepTools bamCoverage`, with a focus on performance, simple command-line usage, and direct BAM-to-track conversion.
+The tool is designed as a lightweight and high-performance alternative to Python-based coverage exporters such as:
 
-## Status
+```text
+deeptools bamCoverage
+```
 
-`bam-coverage` is currently the most mature tool in `bam_tide`.
+It supports:
 
-It is suitable for regular use, but output should still be validated when changing parameters, reference genomes, or downstream workflows.
+- coverage binning
+- multiple normalization strategies
+- SAM flag filtering
+- mapping-quality filtering
+- and BigWig or bedGraph export workflows
 
-## What it does
+depending on the selected output format and build configuration.
 
-`bam-coverage` reads an input BAM file and produces binned coverage output.
+---
 
-Typical use cases include:
+# Typical Use Cases
 
-- creating genome-wide coverage tracks
-- exporting coverage for visualization
-- comparing BAM-level signal between samples
-- producing `bedGraph` or `BigWig`-style output for downstream tools
+- genome browser visualization
+- coverage track generation
+- QC and inspection
+- ChIP-seq style signal generation
+- RNA-seq coverage visualization
+- benchmarking against deeptools
 
-## Why use it?
+---
 
-`bam-coverage` was written because many existing coverage tools are flexible but slow, especially when used repeatedly in larger workflows.
-
-The design goals are:
-
-- fast BAM processing
-- low overhead
-- simple CLI usage
-- useful defaults
-- direct support for common coverage-track workflows
-
-## Basic usage
+# Basic Usage
 
 ```bash
 bam-coverage \
@@ -41,88 +39,215 @@ bam-coverage \
   --outfile sample.bw
 ```
 
-The output format is inferred from the output filename where supported.
+---
 
-For example:
+# Example
 
 ```bash
 bam-coverage \
   --bam sample.bam \
-  --outfile sample.bedgraph
+  --outfile sample.bw \
+  --normalize cpm \
+  --width 50
 ```
 
-## Unsorted BAM input
+---
 
-One important feature of `bam-coverage` is that it can process unsorted BAM files.
+# Input Requirements
 
-```bash
-bam-coverage \
-  --bam input.unsorted.bam \
-  --outfile sample.bw
-```
+The input BAM does not need to be:
 
-This can be useful when working with intermediate BAM files where sorting would be expensive or unnecessary.
+- sorted
+- indexed
+- or coordinate-ordered
 
-## Typical workflow
+The tool processes BAM records directly.
 
-A common workflow is:
+---
 
-1. align reads to a reference genome
-2. produce a BAM file
-3. run `bam-coverage`
-4. visualize or compare the resulting coverage track
+# Coverage Normalization
+
+Supported normalization modes:
+
+| Mode | Description |
+|---|---|
+| `not` | Raw read counts |
+| `rpkm` | Reads Per Kilobase per Million mapped reads |
+| `cpm` | Counts Per Million mapped reads |
+| `bpm` | Bins Per Million mapped reads |
+| `rpgc` | Reads Per Genomic Content (1× genome coverage) |
 
 Example:
 
 ```bash
-bam-coverage \
-  --bam aligned.bam \
-  --outfile aligned.coverage.bw
+--normalize cpm
 ```
 
-## Relationship to deepTools bamCoverage
+---
 
-`bam-coverage` targets a similar problem space as `deepTools bamCoverage`:
+# Bin Width
 
-- read BAM
-- summarize coverage
-- export a genome-wide signal track
+Coverage is calculated in fixed-width bins.
 
-The main difference is implementation philosophy.
+Example:
 
-`bam-coverage` is written in Rust and is designed to be fast and lightweight. It does not aim to reimplement every option from `deepTools`, but instead focuses on the operations that are most useful in high-throughput BAM processing workflows.
+```bash
+--width 50
+```
 
-## Performance
+Smaller bins produce higher-resolution tracks but increase output size and runtime.
 
-Performance depends on:
+---
 
-- BAM size
-- compression level
-- storage speed
-- number of threads
-- output format
-- whether the BAM is sorted
-- reference/genome size
+# Mapping Quality Filtering
 
-In practical use, `bam-coverage` is expected to be much faster than Python-based coverage workflows for common BAM summarization tasks.
+Reads below the specified MAPQ threshold are ignored.
 
-## Output
+Example:
 
-Depending on the selected output path and enabled features, `bam-coverage` can write coverage-style track files such as:
+```bash
+--min-mapping-quality 20
+```
 
-- `bedGraph`
-- `BigWig`
+---
 
-These files can be used in genome browsers or downstream analysis workflows.
+# SAM Flag Filtering
 
-## Notes and limitations
+The tool supports deeptools-style SAM flag filtering.
 
-`bam-coverage` is intended to be a practical high-performance coverage tool, not a full clone of every `bamCoverage` option.
+---
 
-When reproducing published analyses, always verify that binning, filtering, normalization, and output settings match the original workflow.
+## Excluding Reads
 
-## See also
+Example:
 
-- [`bw-compare`](./bw-compare.md), if available in your build
-- [`bam-quant`](./bam-quant.md)
-- [`bam-ont-normalizer`](./bam-ont-normalizer.md)
+```bash
+--sam-flag-exclude 2816
+```
+
+This excludes:
+
+- secondary alignments
+- QC-failed reads
+- supplementary alignments
+
+A read is excluded if:
+
+```text
+(read_flag & mask) != 0
+```
+
+---
+
+## Including Reads
+
+Example:
+
+```bash
+--sam-flag-include 64
+```
+
+This keeps only reads matching:
+
+```text
+read1
+```
+
+A read is included only if:
+
+```text
+(read_flag & mask) == mask
+```
+
+---
+
+# Duplicate and Supplementary Reads
+
+Optional inclusion flags:
+
+| Option | Meaning |
+|---|---|
+| `--include-secondary` | Include secondary alignments |
+| `--include-supplementary` | Include supplementary alignments |
+| `--include-duplicates` | Include duplicate-marked reads |
+
+By default these are excluded to match common coverage-generation conventions.
+
+---
+
+# Read1-Only Coverage
+
+```bash
+--only-r1
+```
+
+restricts coverage generation to read1 alignments.
+
+Useful for:
+
+- paired-end single-cell workflows
+- duplicate reduction
+- and compatibility with certain downstream analyses
+
+---
+
+# Example Comparison Workflow
+
+```text
+BAM
+  ↓
+bam-coverage
+  ↓
+BigWig
+  ↓
+bw-compare
+  ↓
+validation report
+```
+
+---
+
+# Performance Notes
+
+The tool is optimized for:
+
+- streaming BAM traversal
+- low-overhead coverage accumulation
+- large genomic datasets
+- and high-throughput workflows
+
+Compared to Python-based coverage generation, the main performance improvements typically come from:
+
+- reduced serialization overhead
+- direct memory management
+- and compiled execution
+
+rather than algorithmic shortcuts.
+
+---
+
+# Typical Workflow Context
+
+```text
+aligned BAM
+  ↓
+bam-coverage
+  ↓
+BigWig / bedGraph
+  ↓
+genome browser visualization
+```
+
+---
+
+# Example Full Workflow
+
+```bash
+bam-coverage \
+  --bam aligned.bam \
+  --outfile aligned.bw \
+  --normalize cpm \
+  --width 50 \
+  --min-mapping-quality 20 \
+  --sam-flag-exclude 2816
+```

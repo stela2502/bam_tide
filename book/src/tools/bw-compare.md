@@ -1,101 +1,133 @@
 # bw-compare
 
-`bw-compare` compares coverage tracks (e.g. BigWig or bedGraph) to evaluate differences between methods or tools.
+`bw-compare` compares two BigWig coverage tracks and reports per-chromosome and global differences.
 
-It is primarily intended to validate `bam-coverage` against established tools such as deepTools.
+The tool was originally designed to validate the Rust implementation of `bam-coverage` against existing Python-based workflows such as `deeptools bamCoverage`.
 
-## Status
+Both BigWig files are binned using the same bin width and compared position-by-position.
 
-Utility tool.
+The resulting report summarizes:
 
-Stable enough for internal validation and benchmarking, but not intended as a general-purpose track comparison framework.
+- absolute signal differences
+- variance
+- RMSE
+- maximum deviation
+- and Pearson correlation
 
-## What it does
+between the two tracks.
 
-`bw-compare` takes two coverage tracks and computes differences.
+---
 
-Typical use cases:
+# Typical Use Cases
 
-- compare `bam-coverage` output vs `deepTools bamCoverage`
-- detect systematic biases
-- verify correctness after code changes
-- benchmark parameter effects
+- validating `bam-coverage` output
+- comparing coverage generation methods
+- regression testing after algorithm changes
+- QC of new normalization or filtering strategies
+- benchmarking replacement workflows
 
-## Why it exists
+---
 
-When reimplementing core functionality (like coverage calculation), you need a way to verify:
-
-- numerical agreement
-- systematic differences
-- edge-case behaviour
-
-`bw-compare` provides a simple way to do that.
-
-## Basic usage
+# Basic Usage
 
 ```bash
 bw-compare \
-  --bw1 sample_rust.bw \
-  --bw2 sample_python.bw
+  --python-bw python.bw \
+  --rust-bw rust.bw
 ```
 
-## Typical workflow
+This compares both tracks using the default bin width of 50 bp.
+
+---
+
+# Example With Explicit Parameters
 
 ```bash
-bam-coverage \
-  --bam input.bam \
-  --outfile rust.bw
-
-bamCoverage \
-  -b input.bam \
-  -o python.bw
-
 bw-compare \
-  --bw1 rust.bw \
-  --bw2 python.bw
+  --python-bw sample_python.bw \
+  --rust-bw sample_rust.bw \
+  --bin-width 50 \
+  --eps 0.00001 \
+  --outfile comparison.txt
 ```
 
-## Output
+---
 
-The tool reports:
+# Output Statistics
 
-- overall similarity metrics
-- per-region differences
-- potential outliers
+The report contains one line per chromosome and a final `TOTAL` summary line.
 
-(Exact output depends on implementation details.)
+Reported columns:
+
+| Column | Description |
+|---|---|
+| `n_over_eps` | Number of bins where `|python - rust| > eps` |
+| `frac_n_over_eps` | Fraction of bins exceeding epsilon |
+| `mean_abs` | Mean absolute difference |
+| `var_abs` | Variance of absolute differences |
+| `rmse` | Root mean squared error |
+| `max_abs` | Maximum absolute difference |
+| `pearson_rho` | Pearson correlation between tracks |
+
+---
+
+# Important Notes
+
+## Matching bin width
+
+Both BigWig files must have been generated using the same bin width.
+
+Example:
+
+```bash
+bam-coverage --bin-width 50
+```
+
+must be compared against another track generated with:
+
+```bash
+--bin-width 50
+```
+
+otherwise differences are expected.
+
+---
 
 ## Interpretation
 
-Small differences are expected due to:
+A successful comparison usually shows:
 
-- floating point rounding
-- binning strategies
-- handling of edge cases
+- very small `mean_abs`
+- very small `rmse`
+- high `pearson_rho`
+- and very few bins above epsilon
 
-Large differences usually indicate:
+Small floating point differences are expected between implementations.
 
-- parameter mismatch
-- filtering differences
-- bugs
+---
 
-## Limitations
+# Command Line Options
 
-- assumes comparable input tracks
-- does not normalize automatically
-- not intended for large-scale statistical comparison
-- primarily a developer / validation tool
+| Option | Description |
+|---|---|
+| `--python-bw` | Reference BigWig file |
+| `--rust-bw` | BigWig file to validate |
+| `--bin-width` | Bin width used during coverage generation |
+| `--eps` | Difference threshold used for counting bins as different |
+| `--outfile` | Optional report output file |
 
-## Role in bam_tide
+---
 
-`bw-compare` is not a primary analysis tool.
+# Example Workflow
 
-It is part of the development workflow:
-
-- validate new features
-- ensure reproducibility
-- guard against regressions
-
-## See also
-
-- [`bam-coverage`](./bam-coverage.md)
+```text
+BAM
+  ↓
+bam-coverage
+  ↓
+BigWig
+  ↓
+bw-compare
+  ↓
+validation report
+```

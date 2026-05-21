@@ -1,136 +1,268 @@
 # bam-ont-normalizer
 
-`bam-ont-normalizer` processes ONT-derived BAM files and converts reads into a simplified, consistent structure suitable for downstream single-cell-style workflows.
+`bam-ont-normalizer` converts noisy ONT/Dorado BAM reads into normalized single-cell FASTQ molecules.
 
-It is designed to clean up long-read sequencing data so that it behaves more like the assumptions made by typical 10x / short-read pipelines.
+The tool searches each read in both orientations for a 10x-style cassette structure:
 
-## Status
-
-Early-stage / experimental.
-
-The core idea is stable, but heuristics for detecting structure (barcodes, UMI, transcript boundaries) are still evolving.
-
-This tool should be used for exploration and method development, not yet for production pipelines without validation.
-
-## What it does
-
-`bam-ont-normalizer`:
-
-- reads ONT BAM files (e.g. from Dorado)
-- identifies 10x-style structures within reads:
-  - cell barcode (CB)
-  - UMI (UB)
-  - polyT / adapter regions
-- normalizes reads into a consistent layout
-- ensures each read represents a single structured molecule
-- writes a cleaned BAM with standardized tags
-
-The goal is to turn heterogeneous ONT reads into something that downstream tools can interpret reliably.
-
-## Why use it?
-
-ONT BAM files often:
-
-- contain complex alignments (indels, large skips, multi-block structures)
-- include multiple logical “segments” in a single read
-- vary in orientation and structure
-- lack consistent tagging (CB / UB)
-
-This makes direct use in single-cell pipelines difficult.
-
-`bam-ont-normalizer` attempts to:
-
-- simplify reads
-- enforce a consistent structure
-- recover useful metadata (CB / UB)
-- reduce ambiguity before quantification
-
-## Conceptual model
-
-The tool assumes that valid reads should look like:
-
-```
-[adapter] [cell barcode] [UMI] [polyT] [transcript sequence]
+```text
+adapter + cell barcode + UMI + polyT + transcript
 ```
 
-The normalization process:
+Detected molecules are extracted, orientation-normalized, and written as independent FASTQ records suitable for transcriptome alignment workflows.
 
-1. detects candidate regions within the read
-2. aligns / matches against expected patterns
-3. extracts CB and UMI
-4. enforces a single logical read per molecule
-5. removes or trims inconsistent parts
-6. outputs a normalized representation
+In addition to FASTQ output, the tool generates a TSV sidecar file containing:
 
-## Output
+- extracted cell barcodes
+- UMIs
+- quality strings
+- molecule coordinates
+- orientation
+- and extraction status
 
-The output is a BAM file where:
+The normalizer does not perform barcode correction or whitelist matching. All CB/UMI values are emitted exactly as observed in the read.
 
-- each read is simplified
-- CB / UB tags are set where possible
-- orientation is consistent
-- ambiguous or malformed reads are filtered or trimmed
+---
 
-This BAM is intended for direct use with:
+# Typical Use Cases
 
-- `bam-quant`
-- downstream single-cell workflows
-- exploratory analysis
+- ONT single-cell preprocessing
+- Dorado BAM normalization
+- barcode and UMI extraction
+- transcriptome-first ONT workflows
+- long-read single-cell preprocessing
 
-## Basic usage
+---
+
+# Basic Usage
 
 ```bash
 bam-ont-normalizer \
-  --bam input.bam \
-  --outfile normalized.bam
+  --bam dorado.bam \
+  --out normalized.fastq.gz \
+  --tags molecule_tags.tsv
 ```
 
-## Typical workflow
+---
+
+# Typical Workflow
+
+```text
+Dorado BAM
+  ↓
+bam-ont-normalizer
+  ↓
+normalized FASTQ
+  ↓
+transcriptome alignment
+  ↓
+bam-transcriptome-to-genome
+  ↓
+bam-quant
+```
+
+---
+
+# Output FASTQ Structure
+
+Each detected molecule becomes one FASTQ entry:
+
+```text
+original_read_name/mol<N>
+```
+
+The emitted sequence is normalized into the expected transcript orientation.
+
+Reads without detectable cassettes are not emitted but remain included in the final summary statistics.
+
+---
+
+# Read-Tag TSV Output
+
+The sidecar TSV contains one row per emitted molecule.
+
+Typical columns include:
+
+- read ID
+- original read ID
+- orientation
+- raw cell barcode
+- barcode qualities
+- raw UMI
+- UMI qualities
+- extraction status
+
+This table can later be reused during quantification using:
+
+```bash
+bam-quant --read-tag-table
+```
+
+---
+
+# Adapter and Cassette Detection
+
+The tool searches for:
+
+```text
+adapter + CB + UMI + polyT
+```
+
+using configurable matching rules.
+
+Default adapter:
+
+```text
+CTACACGACGCTCTTCCGATCT
+```
+
+Default structure:
+
+| Component | Default Length |
+|---|---|
+| Cell barcode | 16 bp |
+| UMI | 12 bp |
+
+---
+
+# Example
 
 ```bash
 bam-ont-normalizer \
-  --bam dorado_unmapped.bam \
-  --outfile normalized.bam
+  --bam dorado.bam \
+  --out normalized.fastq.gz \
+  --tags molecule_tags.tsv \
+  --threads 8 \
+  --gzip-level 1
+```
+
+---
+
+# Important Parameters
+
+## Adapter Matching
+
+```bash
+--min-adapter-match 13
+```
+
+Minimum adapter suffix length required for cassette detection.
+
+Useful for noisy ONT reads where only part of the adapter is present.
+
+---
+
+## PolyT Detection
+
+```bash
+--poly-t-min 10
+--poly-t-window 14
+```
+
+Control expected polyT validation behavior after:
+
+```text
+adapter + CB + UMI
+```
+
+---
+
+## Minimum Transcript Length
+
+```bash
+--min-transcript-len 20
+```
+
+Minimum transcript sequence length required after the polyT region.
+
+Shorter molecules are counted but not emitted.
+
+---
+
+# Compression
+
+FASTQ output is gzip-compressed by default.
+
+Compression level:
+
+```bash
+--gzip-level 1
+```
+
+is recommended for large ONT datasets because it significantly improves throughput.
+
+Plain FASTQ output may be enabled using:
+
+```bash
+--no-gzip
+```
+
+---
+
+# Performance Notes
+
+The tool is optimized for:
+
+- streaming BAM processing
+- ONT-scale datasets
+- and large preprocessing workloads
+
+Threading currently accelerates:
+
+- BAM decompression
+- BAM reading
+- and FASTQ compression
+
+depending on storage throughput.
+
+---
+
+# Important Notes
+
+## No barcode correction
+
+The tool intentionally does not perform:
+
+- whitelist correction
+- barcode correction
+- UMI collapsing
+- or cell calling
+
+All sequences are emitted exactly as observed.
+
+This keeps preprocessing reproducible and transparent.
+
+---
+
+## Orientation normalization
+
+Both read orientations are scanned automatically.
+
+Detected molecules are emitted in normalized transcript orientation regardless of original read direction.
+
+---
+
+# Example Full Workflow
+
+```bash
+bam-ont-normalizer \
+  --bam dorado.bam \
+  --out normalized.fastq.gz \
+  --tags molecule_tags.tsv \
+  --threads 8
+
+minimap2 \
+  -ax map-ont transcriptome.fa normalized.fastq.gz \
+  | samtools view -b -o mapped_tx.bam
+
+bam-transcriptome-to-genome \
+  --bam mapped_tx.bam \
+  --gtf transcripts.gtf \
+  --genome GRCh38.fa.gz \
+  --out mapped_genome.bam
 
 bam-quant \
-  --bam normalized.bam \
-  --index splice.index \
-  --outpath quant
+  --bam mapped_genome.bam \
+  --read-tag-table molecule_tags.tsv \
+  --index gencode.v49.annotation.gtf.dat \
+  --outpath quant_out
 ```
-
-## Design goals
-
-- operate directly on BAM (no FASTQ roundtrip)
-- recover structure from noisy reads
-- produce deterministic, reproducible output
-- remain transparent and debuggable
-
-## Limitations
-
-- relies on heuristic pattern detection
-- barcode/UMI detection may fail in low-quality reads
-- complex structural artifacts may not be fully resolved
-- assumptions are currently tuned for 10x-like chemistry
-
-## Philosophy
-
-Rather than forcing ONT data into existing pipelines,  
-`bam-ont-normalizer` adapts the data to make its structure explicit.
-
-This makes it possible to:
-
-- test new workflows
-- integrate long-read data into single-cell pipelines
-- debug assumptions about read structure
-
-## Future directions
-
-- improved adapter / barcode detection
-- better handling of multi-segment reads
-- tighter integration with `bam-quant`
-- optional QC reporting
-
-## See also
-
-- [`bam-quant`](./bam-quant.md)
-- [`bam-coverage`](./bam-coverage.md)

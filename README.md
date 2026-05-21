@@ -2,358 +2,266 @@
 
 # bam_tide
 
-Fast, reproducible BAM → binned coverage exporters and validation utilities written in Rust.
+`bam_tide` is a collection of high-performance genomics and single-cell analysis tools written in Rust.
 
-This repository currently ships two main command-line tools:
+The project focuses on:
 
-- **`bam-coverage`** — compute binned coverage from a position-sorted BAM and write **bedGraph** or **BigWig** (depending on the build/features of your binary).
-- **`bw-compare`** — validate Rust-generated BigWigs against a reference (typically **deeptools `bamCoverage`**) and report per-chromosome and global statistics, including a final **`TOTAL`** line.
+- ONT long-read processing
+- single-cell quantification
+- transcriptome-first workflows
+- splice-aware analysis
+- SNP-aware quantification
+- and scalable HPC deployment
 
-> Goal: provide **bamCoverage-compatible filtering semantics** (include/exclude SAM flags, MAPQ, duplicates, secondary/supplementary) with **much higher performance** and simple, scriptable reproducibility.
+The toolkit was created to reduce dependence on large fragmented bioinformatics software stacks involving:
 
----
+- Conda environments
+- Python dependency chains
+- R installations
+- workflow glue code
+- and repeated parsing of large annotation files
 
-## Installation
+Instead, `bam_tide` aims to provide:
 
-### Option 1: Install via Bioconda (recommended)
-
-Conda currently installs a working ``bam-coverage`` (including ``bw-compare``), the ``bam-quant`` is only worked on in the github version.
-
-`bam-tide` is available as a prebuilt package via Bioconda and can be installed using **micromamba**, **mamba**, or **conda**.
-
-```bash
-micromamba create -n bam-tide -c conda-forge -c bioconda bam-tide
-micromamba activate bam-tide
-```
-
-Or with conda:
-
-```bash
-conda create -n bam-tide -c conda-forge -c bioconda bam-tide
-conda activate bam-tide
-```
-
-> Note: The `conda-forge` channel is required, as Bioconda packages depend on it.
-
-After installation, the tools are available directly:
-
-```bash
-bam-coverage --help
-bw-compare --help
-```
+- standalone compiled binaries
+- reproducible workflows
+- streaming-friendly processing
+- and efficient large-scale analysis
 
 ---
 
-### Option 2: Build from source
+# Main Features
 
-Prerequisites:
+- ONT barcode and UMI extraction
+- transcriptome-to-genome projection
+- splice-aware quantification
+- SNP side-channel quantification
+- BAM coverage generation
+- BigWig comparison and validation
+- barcode-aware BAM subsetting
+- reusable serialized splice indexes
 
-* Rust toolchain (stable) via `rustup`
-* A C toolchain (for dependencies such as htslib)
+---
+
+# Included Tools
+
+| Tool | Description |
+|---|---|
+| `bam-ont-normalizer` | Extract and normalize ONT single-cell molecules |
+| `bam-transcriptome-to-genome` | Convert transcriptome BAMs back to genomic coordinates |
+| `bam-quant` | Splice-aware single-cell quantification |
+| `gtf-splice-index` | Build reusable serialized splice indexes |
+| `bam-coverage` | Generate genomic coverage tracks |
+| `bw-compare` | Compare BigWig coverage tracks |
+| `bam-subset-tag` | Split BAMs using barcode/tag values |
+| `bam-read-tag-stats` | QC and summarize read-tag tables |
+| `bam-quant-testdata` | Generate quantification test datasets |
+
+---
+
+# Installation
+
+## System Dependencies
+
+`bam_tide` depends on HTSlib through `rust-htslib`.
+
+Ubuntu/Debian dependencies:
 
 ```bash
-git clone https://github.com/stela2502/bam_tide.git
-cd bam_tide
+sudo apt-get update
+
+sudo apt-get install -y \
+    libhts-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libz-dev \
+    pkg-config
+```
+
+---
+
+# Building
+
+Standard development build:
+
+```bash
 cargo build --release
 ```
 
-Binaries:
+---
+
+## Static MUSL Build
+
+Recommended for HPC deployment and workflow portability:
 
 ```bash
-./target/release/bam-coverage
-./target/release/bw-compare
+cargo build --release \
+    --target x86_64-unknown-linux-musl
 ```
+
+This produces portable static binaries suitable for:
+
+- HPC systems
+- workflow deployment
+- Singularity/Apptainer containers
+- and reproducible pipelines
 
 ---
 
-### Option 3: Use without activating an environment (advanced)
+# Deploying Binaries Into Pipelines
 
-If you prefer not to activate environments (e.g. in scripts):
+Example deployment workflow:
 
 ```bash
-micromamba run -n bam-tide bam-coverage --help
+find target/x86_64-unknown-linux-musl/release \
+  -maxdepth 1 \
+  -type f \
+  -executable \
+  -exec cp {} pipeline/bin/ \;
 ```
+
+This copies all compiled executables into a workflow `bin/` directory.
 
 ---
 
-## Optional: Verify installation
+# Documentation
+
+The project documentation is written using `mdBook`.
+
+## Install mdBook
 
 ```bash
-bam-coverage --version
-bw-compare --version
+cargo install mdbook
 ```
 
 ---
 
-## Minimal example
+## Build Documentation
 
 ```bash
-bam-coverage --bam input.unsorted.bam --outfile sample.bw
+mdbook build book
 ```
 
+Generated HTML documentation:
+
+```text
+book/book/index.html
+```
 
 ---
 
-## Quickstart
-
-### 1) Generate coverage with `bam-coverage`
-
-**Minimal example:**
+## Live Documentation Server
 
 ```bash
-./target/release/bam-coverage \
-  --bam input.sorted.bam \
-  --outfile sample.bw
+mdbook serve book
 ```
 
-**Common options:**
-- `--width 50` to change bin size (default: 50)
-- `--min-mapping-quality 30` to require MAPQ ≥ 30
-- `--sam-flag-exclude 256` to exclude secondary alignments (deeptools-compatible)
-- `--sam-flag-include 64` to include only Read1
+Default local URL:
 
-Example (exclude secondary + supplementary alignments):
+```text
+http://localhost:3000
+```
+
+---
+
+# Example ONT Workflow
+
+```text
+Dorado BAM
+  ↓
+bam-ont-normalizer
+  ↓
+normalized FASTQ
+  ↓
+transcriptome alignment
+  ↓
+bam-transcriptome-to-genome
+  ↓
+genome-coordinate BAM
+  ↓
+bam-quant
+  ↓
+sparse matrices + SNP matrices
+```
+
+---
+
+# Nextflow Pipeline
+
+The tools are designed to integrate directly into Nextflow workflows.
+
+Example companion pipeline:
+
+https://github.com/stela2502/sc-ont-mut-quant/
+
+The pipeline implements:
+
+- ONT preprocessing
+- transcriptome alignment
+- transcriptome-to-genome projection
+- splice-aware quantification
+- SNP-aware matrix generation
+
+using the `bam_tide` toolchain.
+
+---
+
+# Testing
+
+Run tests:
 
 ```bash
-./target/release/bam-coverage \
-  --bam input.sorted.bam \
-  --outfile sample.bw \
-  --sam-flag-exclude 2304 \
-  --width 50
+cargo test
 ```
 
-> `--sam-flag-exclude` is a **bitmask**: any read with `(flag & mask) != 0` is discarded.
-
----
-
-### 2) Validate results with `bw-compare`
-
-Compare a Python (deeptools) BigWig to a Rust BigWig:
+Verbose testing:
 
 ```bash
-./target/release/bw-compare \
-  --python-bw python_sample.bw \
-  --rust-bw rust_sample.bw
+cargo test --verbose
 ```
 
-This prints a per-chromosome report and finishes with a **`TOTAL`** line that summarizes all chromosomes.
+---
 
-**Write the report to a file:**
+# GitHub CI
+
+The repository uses GitHub Actions for:
+
+- building
+- dependency validation
+- and automated testing
+
+Current CI workflow installs HTSlib dependencies and runs:
 
 ```bash
-./target/release/bw-compare \
-  --python-bw python_sample.bw \
-  --rust-bw rust_sample.bw \
-  --outfile compare_report.txt
-```
-
-See the full benchmark results here:
-
-[Benchmark results](Benchmark.md)
-
----
-
-## Command reference
-
-### `bam-coverage --help`
-
-Shared CLI options for coverage exporters (bedGraph / bigWig)
-
-```
-Usage: bam-coverage [OPTIONS] --bam <BAM> --outfile <OUTFILE>
-
-Options:
-  -b, --bam <BAM>
-          Input BAM file (sorted by chromosome position)
-
-  -o, --outfile <OUTFILE>
-          Output file (bedGraph or BigWig depending on binary)
-
-  -n, --normalize <NORMALIZE>
-          Normalize the data somehow
-
-          [default: not]
-          [possible values: not, rpkm, cpm, bpm, rpgc]
-
-  -w, --width <WIDTH>
-          Bin width for coverage calculation
-
-          [default: 50]
-
-      --only-r1
-          Collect only R1 areas
-
-      --min-mapping-quality <MIN_MAPPING_QUALITY>
-          Minimum mapping quality to include a read
-
-          [default: 0]
-
-      --include-secondary
-          Include secondary alignments
-
-      --include-supplementary
-          Include supplementary alignments
-
-      --include-duplicates
-          Include duplicate-marked reads
-
-      --sam-flag-exclude <SAM_FLAG_EXCLUDE>
-          Exclude reads with ANY of these SAM flag bits set (equivalent to deeptools --samFlagExclude).
-
-          The value is a bitmask of SAM flags. Any read with (read_flag & mask) != 0 will be discarded.
-
-          Examples:
-            256  -> exclude secondary alignments
-            512  -> exclude QC-failed reads
-            1024 -> exclude PCR/optical duplicates
-            2048 -> exclude supplementary alignments
-            2816 -> exclude secondary + QC-fail + supplementary
-
-          Default: None (no flag-based exclusion, matches bamCoverage defaults)
-
-      --sam-flag-include <SAM_FLAG_INCLUDE>
-          Include only reads that have ALL of these SAM flag bits set. Applied after the exclusion test (equivalent to deeptools --samFlagInclude).
-
-          The value is a bitmask of SAM flags. A read is kept only if: (read_flag & mask) == mask
-
-          Examples:
-            64  -> include only read1
-            128 -> include only read2
-            2   -> include only properly paired reads
-
-          Default: None (no include constraint, matches bamCoverage defaults)
-
-  -h, --help
-          Print help (see a summary with '-h')
+cargo build --verbose
+cargo test --verbose
 ```
 
 ---
 
-### `bw-compare --help`
+# Design Philosophy
 
-Compare two BigWig files (typically python bamCoverage vs. rust bam-coverage) and report per-chromosome and global differences.
+The project emphasizes:
 
-The tool bins both BigWigs with the same bin width and compares the values position by position. It reports several statistics describing how different the signals are.
+- performance
+- reproducibility
+- deployment simplicity
+- low runtime overhead
+- and scalable long-read analysis
 
-Output columns:
-- `n_over_eps`       Number of bins where `|python - rust| > eps`
-- `frac_n_over_eps`  Fraction of bins over eps
-- `mean_abs`         Mean absolute difference
-- `var_abs`          Variance of absolute differences
-- `rmse`             Root mean squared error
-- `max_abs`          Maximum absolute difference
-- `pearson_rho`      Pearson correlation between tracks
-
-A final **TOTAL** line summarizes all chromosomes.
-
-If `--outfile` is not given, a report file will be created automatically:
-`bw_compare_<rust_basename>_w<bin_width>.txt`
-
-```
-Usage: bw-compare [OPTIONS] --python-bw <FILE> --rust-bw <FILE>
-
-Options:
-      --python-bw <FILE>
-          Python-generated BigWig (reference)
-
-      --rust-bw <FILE>
-          Rust-generated BigWig (to be validated)
-
-      --bin-width <INT>
-          Bin width used during coverage generation (must match both files)
-
-          [default: 50]
-
-      --eps <FLOAT>
-          Epsilon threshold for counting a bin as different (|python - rust| > eps)
-
-          [default: 0.00001]
-
-      --outfile <FILE>
-          Optional output file for the comparison report.
-
-          If not provided, the report is written to:
-          bw_compare_<rust_basename>_w<bin_width>.txt
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-```
+The goal is not to replace all bioinformatics tooling, but to accelerate and simplify the computationally expensive parts of sequencing workflows.
 
 ---
 
-## Reproducibility notes
+# Current Status
 
-To get reproducible and comparable coverage tracks:
+`bam_tide` is an actively evolving research-oriented toolkit.
 
-1. **Use a position-sorted BAM**
-   - `bam-coverage` expects the BAM to be sorted by chromosome position.
-2. **Match bin width**
-   - `bam-coverage --width` and `bw-compare --bin-width` must match (and must also match your `bamCoverage --binSize` if you compare to deeptools).
-3. **Match filtering semantics**
-   - MAPQ threshold: `--min-mapping-quality`
-   - Include/exclude: `--sam-flag-exclude` / `--sam-flag-include`
-   - Secondary/supplementary/duplicates: `--include-secondary`, `--include-supplementary`, `--include-duplicates`
-4. **Normalization**
-   - Ensure both tools use the same normalization scheme (e.g. CPM/RPKM/BPM/RPGC) and genome size settings (where applicable).
-5. **Floating point**
-   - Minor floating point differences can occur; use `bw-compare --eps` to set a meaningful tolerance and rely on correlation (`pearson_rho`) plus RMSE/mean absolute difference for validation.
+Interfaces and output formats may still evolve, especially in experimental ONT and SNP-processing components.
 
-### Example validation workflow
+The current focus is:
 
-```bash
-# Python reference (deeptools)
-bamCoverage input.sorted.bam --samFlagExclude 256 --binSize 50 -o python_input_flag256.bw
-
-# Rust candidate
-./target/release/bam-coverage -b input.sorted.bam --sam-flag-exclude 256 --width 50 -o rust_input_flag256.bw
-
-# Compare
-./target/release/bw-compare --python-bw python_input_flag256.bw --rust-bw rust_input_flag256.bw --bin-width 50
-```
-
----
-
-## Benchmarks (example)
-
-In a small validation experiment across multiple SAM flag exclusion masks, the Rust implementation produced numerically indistinguishable results (Pearson r ≈ 1.0) while being **~10× faster** and using **~10× less peak memory** than deeptools `bamCoverage` (exact numbers depend on dataset, IO, and chosen flags).
-
----
-
-## Future developments
-
-Planned improvements to increase parity with deeptools `bamCoverage` and to improve reproducibility/UX:
-
-- **Feature parity** (selected examples)
-  - more read extension / fragment handling options (paired-end fragment coverage semantics)
-  - region-restricted output (chromosome/interval subsets)
-  - smoothing / rolling aggregation options
-  - advanced normalization configurations (explicit effective genome size, RPGC parameters)
-  - blacklist / region exclusion
-- **Better packaging**
-  - published releases with prebuilt binaries for common Linux targets
-  - container recipes for Apptainer/Singularity and Docker
-- **Performance and QA**
-  - expanded test suite (known-answer tests and randomized property tests)
-  - continuous benchmarking and regression checks
-  - improved bw-compare reporting (optional CSV/TSV output, plots)
-
-If you rely on a particular `bamCoverage` option that is currently missing, please open an issue describing:
-- the exact deeptools CLI you use
-- a small test BAM (or synthetic minimal example)
-- the expected behavior
-
----
-
-## License
-
-See `LICENSE` in this repository.
-
----
-
-## Acknowledgements
-
-- Inspired by the deeptools `bamCoverage` interface and semantics.
-- Uses the Rust ecosystem for HTS parsing and BigWig writing (see `Cargo.toml` for dependencies).
+- correctness
+- reproducibility
+- workflow integration
+- and scalable performance
