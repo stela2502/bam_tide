@@ -261,22 +261,16 @@ fn build_transcriptome(args: &TranscriptomeArgs) -> Result<()> {
         .map(|e| e == "dat")
         .unwrap_or(false)
     {
-        SpliceIndex::load(&args.source)
-            .with_context(|| format!("reading splice index {}", args.source.display()))?
+        SpliceIndex::load(&args.index)
+            .with_context(|| format!("reading splice index {}", args.index.display()))?
     } else {
         SpliceIndex::from_path(
-            &args.source,
+            &args.index,
             args.bin_width,
             IdNameKeys::default(),
         )
-        .with_context(|| format!("building index from {}", args.source.display()))?
+        .with_context(|| format!("building index from {}", args.index.display()))?
     };
-    .with_context(|| {
-        format!(
-            "failed to build splice index from {}",
-            args.annotation.display()
-        )
-    })?;
 
     let genome = Genome::from_fasta(&args.genome)
         .with_context(|| {
@@ -341,17 +335,19 @@ fn build_transcriptome(args: &TranscriptomeArgs) -> Result<()> {
             }
         }
 
-        let Some(tx_name) = tx.primary_name() else {
+        let chr_name = &index.chr_names[tx.chr_id];
+
+        /*
+        let Some(_tx_name) = tx.primary_name() else {
             continue;
         };
-
-        let chr_name = &index.chr_names[tx.chr_id];
 
         let genome_chr_id = genome
             .chr_id(chr_name)
             .with_context(|| {
                 format!("chromosome missing from genome FASTA: {chr_name}")
             })?;
+        */
 
         let record = FastaRecord::from_transcript(
             &genome,
