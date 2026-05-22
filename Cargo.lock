@@ -1627,7 +1627,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 [[package]]
 name = "snp-index"
 version = "0.1.3"
-source = "git+https://github.com/stela2502/snp-index#c76c60a530552d544ece0c520d9d0d72daa2b00b"
+source = "git+https://github.com/stela2502/snp-index#40d2d8a8bd21b854919823970a05a2a89830eaf2"
 dependencies = [
  "anyhow",
  "flate2",

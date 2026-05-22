@@ -57,6 +57,8 @@ Instead, `bam_tide` aims to provide:
 | `bam-read-tag-stats` | QC and summarize read-tag tables |
 | `bam-quant-testdata` | Generate quantification test datasets |
 
+Detailed documentation for the software suite is available at [bam_tide documentation](https://stela2502.github.io/bam_tide/)
+
 ---
 
 # Installation

@@ -73,8 +73,21 @@ impl BamTranscriptomeMapper {
         let gtf = gtf.as_ref();
         let fasta = fasta.as_ref();
 
-        let index = SpliceIndex::from_path(gtf, 1_000_000, IdNameKeys::default())
-            .with_context(|| format!("building SpliceIndex from {}", gtf.display()))?;
+        let index = match gtf.extension().and_then(|s| s.to_str()) {
+            Some("dat") => {
+                SpliceIndex::load(gtf)
+                    .with_context(|| {
+                        format!("loading binary SpliceIndex from {}", gtf.display())
+                    })?
+            }
+
+            _ => {
+                SpliceIndex::from_path(gtf, 1_000_000, IdNameKeys::default() )
+                    .with_context(|| {
+                        format!("building SpliceIndex from {}", gtf.display())
+                    })?
+            }
+        };
 
         let genome = snp_index::Genome::from_fasta(fasta)
             .with_context(|| format!("reading genome FASTA {}", fasta.display()))?;

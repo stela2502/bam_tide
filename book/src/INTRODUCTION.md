@@ -91,7 +91,12 @@ The preferred deployment model is:
 ```bash
 cargo build -r --target x86_64-unknown-linux-musl
 
-cp target/x86_64-unknown-linux-musl/release/bam-* pipeline/bin/
+find target/x86_64-unknown-linux-musl/release \
+  -maxdepth 1 \
+  -type f \
+  -executable \
+  -exec cp {} pipeline/bin/ \;
+
 ```
 
 and run.

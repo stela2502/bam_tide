@@ -93,7 +93,7 @@ fn run(cli: Cli) -> Result<()> {
         .set_threads(cli.threads)
         .with_context(|| format!("setting {} reader threads", cli.threads))?;
 
-    let mut mapper = BamTranscriptomeMapper::from_path_and_fasta(&cli.gtf, &cli.genome)
+    let mut mapper = BamTranscriptomeMapper::new(&cli.gtf, &cli.genome)
         .with_context(|| {
             format!(
                 "building transcriptome-to-genome mapper from annotation {} and genome {}",
