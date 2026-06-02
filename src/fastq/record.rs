@@ -1,4 +1,4 @@
-//use crate::ont_normalizer::primer::{PrimerDetector, PrimerHit, Orientation};
+//use crate::primer::{PrimerDetector, PrimerHit, Orientation};
 //use mapping_info::MappingInfo;
 
 

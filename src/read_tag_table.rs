@@ -105,7 +105,7 @@ pub struct ReadTagTableConfig {
     pub umi_qual_column: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadTagRecord {
     pub read_id: String,
     pub original_read_id: Option<String>,
@@ -115,12 +115,12 @@ pub struct ReadTagRecord {
     pub umi_qual: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ReadTagTable {
     records: HashMap<String, ReadTagRecord>,
     //mapping_info: MappingInfo,
 }
-
+a
 impl ReadTagTable {
     pub fn from_config(config: &ReadTagTableConfig) -> Result<Self> {
         let mut mapping_info = mapping_info::MappingInfo::new( None, 0.0, 0);        
@@ -188,6 +188,28 @@ impl ReadTagTable {
         })
     }
 
+    pub fn save_binary<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let path = path.as_ref();
+        let file = File::create(path)
+            .with_context(|| format!("creating {}", path.display()))?;
+
+        bincode::serialize_into(file, self)
+            .with_context(|| format!("writing binary read-tag table {}", path.display()))?;
+
+        Ok(())
+    }
+
+    pub fn load_binary<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        let file = File::open(path)
+            .with_context(|| format!("opening {}", path.display()))?;
+
+        let table: Self = bincode::deserialize_from(file)
+            .with_context(|| format!("reading binary read-tag table {}", path.display()))?;
+
+        Ok(table)
+    }
+
     pub fn get(&self, read_id: &str) -> Option<&ReadTagRecord> {
         self.records.get(read_id)
     }
@@ -219,6 +241,14 @@ impl ReadTagTable {
         }
 
         counts
+    }
+
+    pub fn insert(&mut self, record: ReadTagRecord) -> Option<ReadTagRecord> {
+        self.records.insert(record.read_id.clone(), record)
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.records.extend(other.records);
     }
 
     pub fn summarize_pairs(&self, min_pair_count: u64, min_cell_umis: u64) -> PairStats {

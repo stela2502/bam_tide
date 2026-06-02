@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::path::PathBuf;
+use primer::PrimerCli;
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -59,10 +60,13 @@ pub struct Cli {
         value_name = "TSV",
         help = "Output molecule metadata TSV. Contains one row per emitted molecule with CB/UMI, qualities, coordinates, orientation, and status."
     )]
-    pub tags: PathBuf,
+    pub read_tags: PathBuf,
 
     #[command(flatten)]
     pub primer: sc_primer::PrimerCli,
+
+    #[command(flatten)]
+    pub feature_tags: crate::tags::cli::TagCli,
 
     #[arg(
         long,

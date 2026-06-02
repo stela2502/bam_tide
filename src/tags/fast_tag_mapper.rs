@@ -74,6 +74,14 @@ impl TagCall {
             Self::NoMatch { .. } => String::new(),
         }
     }
+
+    pub fn best_tag_id(&self) -> Option<u64> {
+        match self {
+            Self::Match { tag_id, .. } => Some(*tag_id as u64),
+            Self::NoMatch { .. } => None,
+            Self::MultiMatch { .. } => None,
+        }
+    }
 }
 
 /// Very strict tag mapper for BD sample tags / HTO-like reads.
@@ -104,12 +112,26 @@ impl FastTagMapper {
         Self {
             name: name.into(),
             kmer_size,
+            
             tags: Vec::new(),
+            name_to_id: HashMap<String, u64>,
+
             seed_to_tags: HashMap::new(),
             max_mismatches: 2,
             min_overlap_fraction: 0.75,
             max_leading_bases: 4,
         }
+    }
+    pub fn tags(&self) -> &[TagEntry] {
+        self.tags
+    }
+
+    pub fn tag(&self, id: usize) -> Option<&TagEntry> {
+        self.tags.get(id)
+    }
+
+    pub fn tag_count(&self) -> usize {
+        self.tags.len()
     }
 
     pub fn with_max_mismatches(mut self, max_mismatches: usize) -> Self {
@@ -131,6 +153,7 @@ impl FastTagMapper {
         &self.name
     }
 
+
     pub fn add_tag(&mut self, name: impl Into<String>, sequence: impl AsRef<[u8]>) -> Result<usize> {
         if self.kmer_size == 0 {
             bail!("kmer_size must be > 0");
@@ -138,6 +161,14 @@ impl FastTagMapper {
 
         let id = self.tags.len();
         let entry = TagEntry::new(id, name, sequence);
+
+        if self
+            .name_to_id
+            .insert(entry.name.clone(), id as u64)
+            .is_some()
+        {
+            bail!("duplicate tag name '{}'", entry.name);
+        }
 
         if entry.sequence.len() < self.kmer_size {
             bail!("tag '{}' is shorter than kmer_size {}", entry.name, self.kmer_size);

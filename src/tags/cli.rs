@@ -1,5 +1,6 @@
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
+use crate::tags::FastTagMapper;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum TagRead {
@@ -47,7 +48,7 @@ pub struct TagCli {
         value_name = "r1|r2",
         help = "Read used for side-channel tag detection."
     )]
-    pub tag_read: TagRead,
+    pub search_read: TagRead,
 
     #[arg(
         long,
@@ -92,9 +93,7 @@ pub struct TagCli {
 
 impl TagCli {
     pub fn enabled(&self) -> bool {
-        self.tag_set != BuiltinTagSet::None
-            || self.custom_tag_file.is_some()
-            || self.feature_call_table.is_some()
+        self.tag_set != BuiltinTagSet::None || self.custom_tag_file.is_some()
     }
 
     pub fn builtin_name(&self) -> Option<&'static str> {
@@ -103,5 +102,52 @@ impl TagCli {
             BuiltinTagSet::BdHuman => Some("bd-human"),
             BuiltinTagSet::BdMouse => Some("bd-mouse"),
         }
+    }
+
+    pub fn mapper(&self) -> anyhow::Result<Option<FastTagMapper>> {
+        use anyhow::bail;
+
+        let mapper = match (&self.custom_tag_file, self.tag_set) {
+            (None, BuiltinTagSet::None) => {
+                return Ok(None);
+            }
+
+            (Some(path), _) => {
+                let ext = path
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+
+                if matches!(ext.as_str(), "fa" | "fasta" | "fna") {
+                    FastTagMapper::from_fasta(
+                        path,
+                        "custom",
+                        self.tag_kmer_size,
+                    )?
+                } else {
+                    FastTagMapper::from_tsv(
+                        path,
+                        "custom",
+                        self.tag_kmer_size,
+                    )?
+                }
+            }
+
+            (None, BuiltinTagSet::BdHuman) => {
+                FastTagMapper::bd_human(self.tag_kmer_size)?
+            }
+
+            (None, BuiltinTagSet::BdMouse) => {
+                FastTagMapper::bd_mouse(self.tag_kmer_size)?
+            }
+        };
+
+        Ok(Some(
+            mapper
+                .with_max_mismatches(
+                    self.tag_min_matches.saturating_sub(1)
+                )
+        ))
     }
 }
