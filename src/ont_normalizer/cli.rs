@@ -61,69 +61,8 @@ pub struct Cli {
     )]
     pub tags: PathBuf,
 
-    #[arg(
-        long,
-        default_value = "CTACACGACGCTCTTCCGATCT",
-        value_name = "SEQ",
-        help = "Expected 10x adapter/primer sequence before CB+UMI+polyT."
-    )]
-    pub adapter: String,
-
-    #[arg(
-        long,
-        default_value_t = 13,
-        value_name = "BP",
-        help = "Minimum adapter suffix length allowed for cassette detection. Useful when ONT reads contain only the adapter suffix before CB/UMI."
-    )]
-    pub min_adapter_match: usize,
-
-    #[arg(
-        long,
-        default_value_t = 2,
-        value_name = "N",
-        help = "Maximum mismatches allowed in the adapter/suffix match. Bases N/n are treated as unknown and do not count as mismatches."
-    )]
-    pub max_adapter_mismatches: usize,
-
-    #[arg(
-        long,
-        default_value_t = 16,
-        value_name = "BP",
-        help = "Cell barcode length immediately after the adapter."
-    )]
-    pub cb_len: usize,
-
-    #[arg(
-        long,
-        default_value_t = 12,
-        value_name = "BP",
-        help = "UMI length immediately after the cell barcode."
-    )]
-    pub umi_len: usize,
-
-    #[arg(
-        long,
-        default_value_t = 10,
-        value_name = "N",
-        help = "Minimum number of T bases required inside the polyT detection window."
-    )]
-    pub poly_t_min: usize,
-
-    #[arg(
-        long,
-        default_value_t = 14,
-        value_name = "BP",
-        help = "Window size used to validate the expected polyT start after adapter + CB + UMI."
-    )]
-    pub poly_t_window: usize,
-
-    #[arg(
-        long,
-        default_value_t = 20,
-        value_name = "BP",
-        help = "Minimum transcript sequence length required after the polyT stretch. Molecules shorter than this are counted but not emitted."
-    )]
-    pub min_transcript_len: usize,
+    #[command(flatten)]
+    pub primer: sc_primer::PrimerCli,
 
     #[arg(
         long,

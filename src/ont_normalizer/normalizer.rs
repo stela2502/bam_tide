@@ -1,11 +1,11 @@
 use crate::ont_normalizer::cli::Cli;
-use crate::ont_normalizer::fastq_writer::FastqWriter;
-use crate::ont_normalizer::read_tag_table::{
+use use crate::fastq::writer::::FastqWriter;
+use crate::read_tag_table::{
     ReadTagTableWriter,
     ReadTagWriteRecord,
 };
-use crate::ont_normalizer::primer::{PrimerDetector, PrimerSplit};
-use crate::ont_normalizer::fastq_record::FastqRecord;
+use crate::primer::{PrimerDetector, PrimerSplit};
+use use crate::fastq::record::::FastqRecord;
 
 use mapping_info::MappingInfo;
 

@@ -17,6 +17,7 @@ scdata = { version = "0.2.3", features = ["compare"] }
 #gtf_splice_index = "0.4.2"
 #gtf_splice_index = { path = "../gtf_splice_index" }
 gtf_splice_index = { git = "https://github.com/stela2502/gtf_splice_index" }
+primer = { git = "https://github.com/stela2502/sc_primer"}
 
 mapping_info = "0.1.0"
 int_to_str = { package = "stela-int-to-str", version = "0.2.3" }
