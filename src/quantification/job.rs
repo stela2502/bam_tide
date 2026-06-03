@@ -12,7 +12,7 @@ use int_to_str::int_to_str::IntToStr;
 use mapping_info::MappingInfo;
 use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex};
 
-use crate::ont_normalizer::read_tag_table::ReadTagTable;
+use crate::read_tag_table::ReadTagTable;
 
 #[derive(Clone)]
 pub struct Job {
@@ -108,7 +108,7 @@ impl<'a> JobBuilder<'a> {
             match read_tag_table.cell_umi_for_read(read_id) {
                 Some((cell, umi)) => {
                     report.report("cell_umi from read-tag table");
-                    (cell, umi)
+                    (cell.to_string(), umi.to_string())
                 }
                 None => {
                     report.report("read not in read-tag table");
@@ -133,10 +133,10 @@ impl<'a> JobBuilder<'a> {
             };
 
             report.report("cell_umi from BAM tags");
-            (cb_raw, ub)
+            (cb_raw.to_string(), ub.to_string())
         };
 
-        let cb = Self::normalize_10x_barcode(cb_raw);
+        let cb = Self::normalize_10x_barcode(&cb_raw);
 
         let cell = match Self::dna_to_u64(cb) {
             Some(v) => v,
@@ -146,7 +146,7 @@ impl<'a> JobBuilder<'a> {
             }
         };
 
-        let umi = match Self::dna_to_u64(ub) {
+        let umi = match Self::dna_to_u64(&ub) {
             Some(v) => v,
             None => {
                 report.report("invalid UB");
@@ -181,48 +181,6 @@ impl<'a> JobBuilder<'a> {
         };
 
         let aligned = self.build_aligned_read(rec, chr_name);
-        /*
-        if rec.qname() == b"795ade5c-7cba-4e99-a3a3-f105872d4b18_0" {
-            eprintln!("FOUND DEBUG READ: 795ade5c-7cba-4e99-a3a3-f105872d4b18_0");
-            eprintln!("  chr_id={chr_id}");
-            eprintln!("  bam_pos0={}", rec.pos());
-            eprintln!("  cigar={}", rec.cigar());
-
-            match &aligned {
-                Some(read) => {
-                    eprintln!("  aligned.ref_span={:?}", read.ref_span());
-                    eprintln!("  aligned.strand={:?}", read.strand);
-                    eprintln!("  aligned.seq_len={}", read.seq.len());
-                    eprintln!("  aligned.qual_len={:?}", read.qual.as_ref().map(|q| q.len()));
-                    eprintln!("  aligned.ops_len={}", read.ops.len());
-
-                    for pos0 in [7_674_894 - 1, 7_674_953 - 1, 7_675_994 - 1] {
-                        eprintln!(
-                            "  probe pos1={} base_at_ref_pos={:?}",
-                            pos0 + 1,
-                            read.base_at_ref_pos(pos0)
-                        );
-                    }
-
-                    match self.snp{
-                        Some(snp) => {
-                            let (ref_ids, alt_ids, other_ids) = snp.get_ref_alt_other_ids_for_read(&read, 0);
-                            eprintln!(
-                                "Detected SNP ids:\n\tref: {:?}\n\talt: {:?}\n\tother: {:?}",
-                                ref_ids,alt_ids, other_ids
-                            );
-                        },
-                        None => {
-                            eprintln!("The sno index was not stored correctly!");
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("  aligned=None");
-                }
-            }
-        }
-        */
 
         Ok(Some(Job {
             cell,

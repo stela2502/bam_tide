@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
-use primer::PrimerCli;
+use sc_primer::PrimerCli;
+use crate::tags::cli::TagCli;
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -63,10 +64,10 @@ pub struct Cli {
     pub read_tags: PathBuf,
 
     #[command(flatten)]
-    pub primer: sc_primer::PrimerCli,
+    pub primer: PrimerCli,
 
     #[command(flatten)]
-    pub feature_tags: crate::tags::cli::TagCli,
+    pub feature_tags: TagCli,
 
     #[arg(
         long,
@@ -90,6 +91,14 @@ pub struct Cli {
         help = "Write plain FASTQ instead of gzip-compressed FASTQ. Useful for speed benchmarking."
     )]
     pub no_gzip: bool,
+
+    #[arg(
+        long,
+        default_value_t = 20,
+        value_name = "BP",
+        help = "Minimum transcript/insert length after primer extraction. Shorter molecules are discarded."
+    )]
+    pub min_transcript_len: usize,
 }
 
 impl Cli {

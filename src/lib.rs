@@ -10,9 +10,9 @@ pub mod multi_subset_bam;
 pub mod ont_normalizer;
 pub mod results;
 pub mod read_tag_table;
-pub mod primer;
 pub mod fastq;
 pub mod illumina_normalizer;
+pub mod tags;
 
 pub mod transcriptome_to_genome;
 

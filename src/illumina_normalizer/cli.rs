@@ -1,64 +1,51 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Chemistry {
-    #[value(name = "tenx-v2")]
-    TenxV2,
+pub enum PrimerRead {
+    #[value(name = "r1")]
+    R1,
 
-    #[value(name = "tenx-v3")]
-    TenxV3,
-
-    #[value(name = "tenx-v4")]
-    TenxV4,
-
-    #[value(name = "bd-v1")]
-    BdV1,
-
-    #[value(name = "bd-v2-96")]
-    BdV2_96,
-
-    #[value(name = "bd-v2-384")]
-    BdV2_384,
+    #[value(name = "r2")]
+    R2,
 }
 
-impl Chemistry {
-    pub fn is_bd(self) -> bool {
-        matches!(
-            self,
-            Self::BdV1 | Self::BdV2_96 | Self::BdV2_384
-        )
-    }
-
-    pub fn is_10x(self) -> bool {
-        matches!(
-            self,
-            Self::TenxV2 | Self::TenxV3 | Self::TenxV4
-        )
-    }
-
-    pub fn rhapsody_version(self) -> Option<&'static str> {
+impl PrimerRead {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::BdV1 => Some("v1"),
-            Self::BdV2_96 => Some("v2.96"),
-            Self::BdV2_384 => Some("v2.384"),
-            _ => None,
+            Self::R1 => "r1",
+            Self::R2 => "r2",
         }
     }
+}
 
-    pub fn default_cb_len(self) -> usize {
-        match self {
-            Self::TenxV2 | Self::TenxV3 | Self::TenxV4 => 16,
-            Self::BdV1 | Self::BdV2_96 | Self::BdV2_384 => 0,
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InsertRead {
+    /// Use the insert returned by the primer detector.
+    ///
+    /// This is useful when the biological sequence is on the same read that
+    /// contains the primer/cell/UMI grammar.
+    #[value(name = "detected")]
+    Detected,
 
-    pub fn default_umi_len(self) -> usize {
+    /// Use the synchronized R1 record as the emitted biological read.
+    #[value(name = "r1")]
+    R1,
+
+    /// Use the synchronized R2 record as the emitted biological read.
+    ///
+    /// This is the common Illumina single-cell mode:
+    /// R1 is barcode/UMI, R2 is biological sequence.
+    #[value(name = "r2")]
+    R2,
+}
+
+impl InsertRead {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::TenxV2 => 10,
-            Self::TenxV3 | Self::TenxV4 => 12,
-            Self::BdV1 => 8,
-            Self::BdV2_96 | Self::BdV2_384 => 6,
+            Self::Detected => "detected",
+            Self::R1 => "r1",
+            Self::R2 => "r2",
         }
     }
 }
@@ -67,90 +54,95 @@ impl Chemistry {
 #[command(
     author,
     version,
-    about = "Normalize BD Rhapsody Illumina FASTQ pairs into STAR-friendly reads plus barcode metadata",
+    about = "Normalize Illumina FASTQ pairs into mapper FASTQ plus read-tag metadata",
     long_about = "\
-Normalize BD Rhapsody Illumina paired FASTQ reads.
+Normalize Illumina paired FASTQ reads into one mapper-facing FASTQ record per
+accepted molecule plus a read-tag TSV.
 
-The tool reads R1/R2 FASTQ pairs. R1 is parsed as a BD Rhapsody
-cell-label + UMI read:
+The primer grammar is supplied by sc_primer and can describe 10x, BD Rhapsody,
+sample tags, feature tags, or custom structures.  Unlike the ONT normalizer,
+Illumina normally has one molecule per FASTQ pair, so only the first valid
+primer hit is used.
 
-    C1 + linker + C2 + linker + C3 + UMI + polyT/trailing sequence
+Typical 10x/BD-style use:
 
-The normalizer decodes the BD cell id, extracts the UMI and qualities, and
-writes an artificial barcode read plus the original R2 read.
-
-The output is designed for workflows where STAR performs mapping only and
-bam-quant performs cell/UMI accounting from the sidecar table.
-
-Typical use:
-
-    bd-illumina-normalizer \\
+    bam-illumina-normalizer \\
       --r1 sample_R1.fastq.gz \\
       --r2 sample_R2.fastq.gz \\
-      --out-r1 normalized_R1.fastq.gz \\
-      --out-r2 normalized_R2.fastq.gz \\
-      --tags molecule_tags.tsv \\
-      --rhapsody-version v2.384 \\
+      --out normalized_R2.fastq.gz \\
+      --read-tags molecule_tags.tsv \\
+      --primer-read r1 \\
+      --insert-read r2 \\
+      --chemistry bd-v2-384 \\
       --threads 8 \\
       --gzip-level 1
+
+For chemistries where the biological insert is part of the same read as the
+primer grammar, use:
+
+    --insert-read detected
 "
 )]
 pub struct Cli {
-    #[arg(long, value_name = "FASTQ[.GZ]", help = "Input BD Rhapsody R1 FASTQ containing cell labels and UMI.")]
+    #[arg(
+        long,
+        value_name = "FASTQ[.GZ]",
+        help = "Input R1 FASTQ. Usually barcode/UMI for Illumina single-cell libraries."
+    )]
     pub r1: PathBuf,
 
-    #[arg(long, value_name = "FASTQ[.GZ]", help = "Input BD Rhapsody R2 FASTQ containing biological sequence.")]
+    #[arg(
+        long,
+        value_name = "FASTQ[.GZ]",
+        help = "Input R2 FASTQ. Usually biological insert/read-to-map."
+    )]
     pub r2: PathBuf,
 
-    #[arg(long, value_name = "FASTQ[.GZ]", help = "Output artificial normalized R1 FASTQ.")]
-    pub out_r1: PathBuf,
+    #[arg(
+        long,
+        short,
+        value_name = "FASTQ[.GZ]",
+        help = "Output normalized FASTQ for mapping. Usually synchronized R2."
+    )]
+    pub out: PathBuf,
 
-    #[arg(long, value_name = "FASTQ[.GZ]", help = "Output normalized R2 FASTQ. Usually the original R2 sequence with synchronized read names.")]
-    pub out_r2: PathBuf,
-
-    #[arg(long, short, value_name = "TSV", help = "Output molecule metadata TSV with BD cell id, UMI, qualities, shift, sample id, and status.")]
-    pub tags: PathBuf,
+    #[arg(
+        long,
+        short = 't',
+        value_name = "TSV",
+        help = "Output molecule metadata TSV. Contains read_id, original_read_id, orientation, raw_cb, quality_cb, raw_umi, quality_umi, and status."
+    )]
+    pub read_tags: PathBuf,
 
     #[arg(
         long,
         value_enum,
-        default_value_t = Chemistry::BdV2_384,
-        value_name = "CHEMISTRY",
-        help = "Input single-cell chemistry. Supported: tenx-v2, tenx-v3, tenx-v4, bd-v1, bd-v2-96, bd-v2-384."
+        default_value_t = PrimerRead::R1,
+        help = "Which input read should be scanned with the sc_primer detector."
     )]
-    pub chemistry: Chemistry,
+    pub primer_read: PrimerRead,
 
     #[arg(
         long,
-        default_value = "none",
-        value_name = "none|human|mouse",
-        help = "Optional BD sample-tag primer set for sample id detection."
+        value_enum,
+        default_value_t = InsertRead::R2,
+        help = "Which read should become the emitted mapper FASTQ record. Use r2 for ordinary Illumina, detected for same-read primer+insert layouts."
     )]
-    pub sample_species: String,
+    pub insert_read: InsertRead,
+
+    #[command(flatten)]
+    pub primer: sc_primer::PrimerCli,
+
+    #[command(flatten)]
+    pub feature_tags: crate::tags::cli::TagCli,
 
     #[arg(
         long,
-        default_value_t = 9,
+        default_value_t = 20,
         value_name = "BP",
-        help = "K-mer size used for BD sample id matching."
+        help = "Minimum emitted insert/read length."
     )]
-    pub sample_kmer_size: usize,
-
-    #[arg(
-        long,
-        default_value_t = 6,
-        value_name = "BP",
-        help = "Expected BD UMI length."
-    )]
-    pub umi_len: usize,
-
-    #[arg(
-        long,
-        default_value_t = 10,
-        value_name = "N",
-        help = "Minimum T bases required after UMI to accept trailing polyT."
-    )]
-    pub poly_t_min: usize,
+    pub min_insert_len: usize,
 
     #[arg(
         long,
@@ -174,7 +166,6 @@ pub struct Cli {
         help = "Write plain FASTQ instead of gzip-compressed FASTQ."
     )]
     pub no_gzip: bool,
-
 }
 
 impl Cli {

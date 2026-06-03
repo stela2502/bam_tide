@@ -3,7 +3,7 @@
 
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
-use crate::ont_normalizer::read_tag_table::ReadTagTableCli;
+use crate::read_tag_table::ReadTagTableCli;
 
 
 

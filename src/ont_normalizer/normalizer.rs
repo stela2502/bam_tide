@@ -1,39 +1,20 @@
+use crate::fastq::{record::FastqRecord, writer::FastqWriter};
 use crate::ont_normalizer::cli::Cli;
-crate::fastq::{record::FastqRecord, writer::FastqWriter};
-
-use crate::read_tag_table::{
-    ReadTagTableWriter,
-    ReadTagWriteRecord,
-};
-use sc_primer::{Orientation, PrimerDetector, PrimerMatch};
-
-use use crate::fastq::record::::FastqRecord;
-
-use mapping_info::MappingInfo;
+use crate::read_tag_table::{ReadTagTable, ReadTagRecord, ReadTagTableWriter};
+use crate::tags::FastTagMapper;
+use crate::index::FastTagFeatureIndex;
 
 use anyhow::{Context, Result};
-use rust_htslib::bam::{Read, Reader};
-use std::fs::File;
-use std::io::{BufWriter};
-use std::path::PathBuf;
+use mapping_info::MappingInfo;
 use rayon::prelude::*;
-use std::io::Write;
-use scdata::Scdata;
+use rust_htslib::bam::{Read, Reader};
+use sc_primer::{Orientation, PrimerDetector};
+use scdata::{MatrixValueType, Scdata};
 use scdata::cell_data::GeneUmiHash;
 
+use std::path::PathBuf;
 
-const CHUNK_SIZE :usize = 1_000_000;
-
-#[derive(Debug, Clone)]
-struct NormalizedPrimerRecord {
-    insert: FastqRecord,
-    original_read_id: String,
-    orientation: &'static str,
-    raw_cb: String,
-    quality_cb: String,
-    raw_umi: String,
-    quality_umi: String,
-}
+const CHUNK_SIZE: usize = 1_000_000;
 
 struct ChunkPartial {
     fastq_records: Vec<FastqRecord>,
@@ -48,15 +29,141 @@ pub struct OntNormalizerConfig {
     pub out: PathBuf,
     pub read_tags: PathBuf,
     pub min_transcript_len: usize,
-    pub primer: sc_primer::PrimerDetector,
+
+    pub primer: PrimerDetector,
+    pub feature_tag_mapper: Option<FastTagMapper>,
+
     pub threads: usize,
     pub gzip_level: u32,
     pub gzip: bool,
 }
 
+impl OntNormalizerConfig {
+    fn process_read(&self, read: &FastqRecord) -> ChunkPartial {
+        let detector = &self.primer;
+        let tag_mapper = self.feature_tag_mapper.as_ref();
+        let min_transcript_len = self.min_transcript_len;
+        let mut out = ChunkPartial {
+            fastq_records: Vec::new(),
+            read_tags: ReadTagTable::new(),
+            tag_counts: Scdata::new(1, MatrixValueType::Real),
+            stats: MappingInfo::new(None, 0.0, 0),
+        };
+
+        out.stats.report("total_records");
+
+        let matches = match detector.detect_all(&read.seq, &read.qual) {
+            Ok(matches) => matches,
+            Err(_) => {
+                out.stats.report("zero_cassette");
+                out.stats.report("no_primer_match");
+                return out;
+            }
+        };
+
+        match matches.len() {
+            0 => {
+                out.stats.report("zero_cassette");
+                return out;
+            }
+            1 => out.stats.report("one_cassette"),
+            _ => out.stats.report("multi_cassette"),
+        }
+
+        for (match_index, primer_match) in matches.iter().enumerate() {
+            let insert = match primer_match.get_insert(&read.seq, &read.qual) {
+                Ok(x) => x,
+                Err(_) => {
+                    out.stats.report("bad_insert_slice");
+                    continue;
+                }
+            };
+
+            if insert.seq.len() < min_transcript_len {
+                out.stats.report("short_insert");
+                continue;
+            }
+
+            let cell = match primer_match.get_cell(&read.seq, &read.qual) {
+                Ok(x) => x,
+                Err(_) => {
+                    out.stats.report("bad_cell_slice");
+                    continue;
+                }
+            };
+
+            let umi = match primer_match.get_umi(&read.seq, &read.qual) {
+                Ok(x) => x,
+                Err(_) => {
+                    out.stats.report("bad_umi_slice");
+                    continue;
+                }
+            };
+
+            let cell_id = encode_sequence_id(&cell.seq);
+            let umi_id = encode_sequence_id(&umi.seq);
+
+            let orientation = match primer_match.orientation {
+                Orientation::Forward => {
+                    out.stats.report("forward_molecules");
+                    "forward"
+                }
+                Orientation::ReverseComplement => {
+                    out.stats.report("reverse_molecules");
+                    "reverse_complement"
+                }
+            };
+
+            let insert_id = format!("{}/mol{}", read.id, match_index);
+
+            let mut insert_record = FastqRecord {
+                id: insert_id,
+                seq: insert.seq.to_vec(),
+                qual: insert.qual.to_vec(),
+            };
+
+            if primer_match.orientation == Orientation::ReverseComplement {
+                insert_record = insert_record.revcomp();
+            }
+
+            if let Some(mapper) = tag_mapper {
+                let tag_call = mapper.call(&insert_record.seq);
+
+                if let Some(tag_id) = tag_call.best_tag_id() {
+                    let feature_umi = GeneUmiHash(tag_id, umi_id);
+
+                    out.tag_counts
+                        .try_insert(&cell_id, feature_umi, 1.0, &mut out.stats);
+
+                    out.stats.report("feature_tag_match");
+                    out.stats.report("emitted_molecules");
+                    continue;
+                }
+
+                out.stats.report(tag_call.status());
+            }
+
+            out.read_tags.insert(ReadTagRecord::new(
+                insert_record.id.clone(),
+                Some(read.id.clone()),
+                &cell.seq,
+                &cell.qual,
+                &umi.seq,
+                &umi.qual,
+            ));
+            out.fastq_records.push(insert_record);
+            out.stats.report("emitted_molecules");
+        }
+
+        out
+    }
+}
+ 
+
 pub struct OntNormalizer {
     config: OntNormalizerConfig,
     stats: MappingInfo,
+    read_tags: ReadTagTable,
     feature_tag_table: Scdata,
 }
 
@@ -65,49 +172,26 @@ impl OntNormalizer {
         Self {
             config,
             stats: MappingInfo::new(None, 0.0, 0),
+            read_tags: ReadTagTable::new(),
             feature_tag_table: Scdata::new(1, MatrixValueType::Real),
         }
     }
 
-    pub fn write_feature_tag_table_if_present(&mut self) -> Result<()> {
-        if self.feature_tag_table.is_empty() {
-            return Ok(());
-        }
-
-        let mapper = match self.config.feature_tag_mapper.as_ref() {
-            Some(mapper) => mapper,
-            None => return Ok(()),
-        };
-
-        let out_dir = self
-            .config
-            .out
-            .with_extension("")
-            .join("feature_tag_table_unfiltered");
-
-        std::fs::create_dir_all(&out_dir)?;
-
-        self.feature_tag_table
-            .write_sparse(&out_dir, mapper)
-            .map_err(|e| anyhow::anyhow!("writing feature tag table failed: {e}"))?;
-
-        Ok(())
-    }
-
-    pub fn from_cli(cli: Cli) -> Self {
-        Ok(
-            Self::new(OntNormalizerConfig {
-                bam: cli.bam,
-                out: cli.out,
-                read_tags: cli.read_tags,
-                min_transcript_len: cli.min_transcript_len,
-                primer: cli.primer.detector()?,
-                tags: cli.tags.mapper()?,
-                threads: cli.threads,
-                gzip_level: cli.gzip_level,
-                gzip: !cli.no_gzip,
-            })
-        )
+    pub fn from_cli(cli: Cli) -> Result<Self> {
+        Ok(Self::new(OntNormalizerConfig {
+            bam: cli.bam,
+            out: cli.out,
+            read_tags: cli.read_tags,
+            min_transcript_len: cli.min_transcript_len,
+            primer: cli.primer.detector().map_err(anyhow::Error::msg)?,
+            feature_tag_mapper: cli
+                .feature_tags
+                .mapper()
+                .map_err(anyhow::Error::msg)?,
+            threads: cli.threads,
+            gzip_level: cli.gzip_level,
+            gzip: !cli.no_gzip,
+        }))
     }
 
     pub fn stats(&self) -> &MappingInfo {
@@ -116,6 +200,33 @@ impl OntNormalizer {
 
     pub fn config(&self) -> &OntNormalizerConfig {
         &self.config
+    }
+
+    pub fn write_feature_tag_table_if_present(&mut self) -> Result<()> {
+        if self.feature_tag_table.is_empty() {
+            return Ok(());
+        }
+
+        let Some(mapper) = self.config.feature_tag_mapper.as_ref() else {
+            return Ok(());
+        };
+
+        let out_dir = self
+            .config
+            .out
+            .with_extension("")
+            .join("feature_tag_table_unfiltered");
+
+        std::fs::create_dir_all(&out_dir)
+            .with_context(|| format!("failed to create {}", out_dir.display()))?;
+
+        let ftfi = FastTagFeatureIndex::new( mapper );
+
+        self.feature_tag_table
+            .write_sparse(&out_dir, &ftfi)
+            .map_err(|e| anyhow::anyhow!("writing feature tag table failed: {e}"))?;
+
+        Ok(())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -133,158 +244,60 @@ impl OntNormalizer {
                     format!("failed to create FASTQ: {}", self.config.out.display())
                 })?;
 
-        let mut tags = self.create_tag_writer()?;
-
-        let detector = PrimerDetector::tenx_v3();
-
         let mut chunk: Vec<FastqRecord> = Vec::with_capacity(CHUNK_SIZE);
 
         for rec_result in bam.records() {
-            let rec = rec_result?;
+            let rec = rec_result.context("failed to read BAM record")?;
             chunk.push(FastqRecord::from_bam_record(&rec));
 
             if chunk.len() >= CHUNK_SIZE {
-                self.process_chunk(&chunk, &detector, &mut fastq, &mut tags).expect("Chunk was not prcessed correctly");
+                self.process_chunk(&chunk, &mut fastq)?;
                 chunk.clear();
             }
         }
 
         if !chunk.is_empty() {
-            self.process_chunk(&chunk, &detector, &mut fastq, &mut tags).expect("Chunk was not prcessed correctly");
+            self.process_chunk(&chunk, &mut fastq)?;
         }
 
         fastq.finish()?;
-        tags.flush()?;
+
+        self.read_tags
+            .save(&self.config.read_tags)
+            .with_context(|| {
+                format!(
+                    "failed to write read-tag table {}",
+                    self.config.read_tags.display()
+                )
+            })?;
+
+        self.write_feature_tag_table_if_present()?;
 
         Ok(())
     }
 
-    fn process_chunk<W: Write>(
+    fn process_chunk(
         &mut self,
         input: &[FastqRecord],
-        detector: &PrimerDetector,
-        tag_mapper: Option<&FastTagMapper>,
         fastq: &mut FastqWriter,
-        tags: &mut ReadTagTableWriter<W>,
     ) -> Result<()> {
+
         let partials: Vec<ChunkPartial> = input
             .par_iter()
-            .map(|read| {
-                let mut out = ChunkPartial {
-                    molecules: Vec::new(),
-                    tag_counts: Scdata::new(1, MatrixValueType::Real),
-                    stats: MappingInfo::new(None, 0.0, 0),
-                };
-
-                let matches = match detector.detect_all(&read.seq, &read.qual) {
-                    Ok(matches) => matches,
-                    Err(_) => {
-                        out.stats.report("no_primer_match");
-                        return out;
-                    }
-                };
-
-                match matches.len() {
-                    0 => out.stats.report("no_primer_match"),
-                    1 => out.stats.report("one_primer_match"),
-                    _ => out.stats.report("multi_primer_match"),
-                }
-
-                for (match_index, primer_match) in matches.iter().enumerate() {
-                    let insert = match primer_match.get_insert(&read.seq, &read.qual) {
-                        Ok(x) => x,
-                        Err(_) => {
-                            out.stats.report("bad_insert_slice");
-                            continue;
-                        }
-                    };
-
-                    if insert.seq.len() < self.config.min_insert_len {
-                        out.stats.report("short_insert");
-                        continue;
-                    }
-
-                    let cell = match primer_match.get_cell(&read.seq, &read.qual) {
-                        Ok(x) => x,
-                        Err(_) => {
-                            out.stats.report("bad_cell_slice");
-                            continue;
-                        }
-                    };
-
-                    let umi = match primer_match.get_umi(&read.seq, &read.qual) {
-                        Ok(x) => x,
-                        Err(_) => {
-                            out.stats.report("bad_umi_slice");
-                            continue;
-                        }
-                    };
-
-                    let cell_id = encode_cell(cell.seq);
-                    let umi_id = encode_umi(umi.seq);
-
-                    let orientation = match primer_match.orientation {
-                        Orientation::Forward => "forward",
-                        Orientation::ReverseComplement => "reverse_complement",
-                    };
-
-                    let insert_id = format!("{}_{}", read.id, match_index);
-
-                    let mut insert_record = FastqRecord {
-                        id: insert_id,
-                        desc: None,
-                        seq: insert.seq.to_vec(),
-                        qual: insert.qual.to_vec(),
-                    };
-
-                    if primer_match.orientation == Orientation::ReverseComplement {
-                        insert_record = insert_record.revcomp();
-                    }
-
-                    if let Some(mapper) = tag_mapper {
-                        let tag_call = mapper.call(&insert_record.seq);
-
-                        if let Some(tag_id) = tag_call.best_tag_id() {
-                            let feature_umi = GeneUmiHash(tag_id, umi_id);
-
-                            out.tag_counts.try_insert(
-                                GeneUmiHash {&cell_id,feature_umi},
-                                1.0,
-                                &mut out.stats,
-                            );
-
-                            out.stats.report("feature_tag_match");
-                            continue;
-                        } else {
-                            out.stats.report(tag_call.status());
-                        }
-                    }
-                    let read_tag_record = ReadTagRecord {
-                        read_id: insert_record.id.clone(),
-                        original_read_id: Some(read.id.clone()),
-                        cell: String::from_utf8_lossy(cell.seq).to_string(),
-                        cell_qual: Some(String::from_utf8_lossy(cell.qual).to_string()),
-                        umi: String::from_utf8_lossy(umi.seq).to_string(),
-                        umi_qual: Some(String::from_utf8_lossy(umi.qual).to_string()),
-                    };
-
-                    out.read_tags.insert(read_tag_record);
-                    out.fastq_records.push(insert_record);
-                }
-
-                out
-            })
+            .map(|read| self.config.process_read(read ))
             .collect();
-        
+
         for partial in partials {
             self.stats.merge(&partial.stats);
             self.read_tags.merge(partial.read_tags);
-            self.feature_tag_counts.merge(&partial.tag_counts);
+            self.feature_tag_table.merge(&partial.tag_counts);
 
             for record in partial.fastq_records {
                 fastq.write(&record)?;
+                self.stats.report("fastq_reads_written");
             }
         }
+
         Ok(())
     }
 
@@ -302,8 +315,11 @@ impl OntNormalizer {
         let fwd = info.get_issue_count("forward_molecules");
         let rev = info.get_issue_count("reverse_molecules");
 
-        let failed_poly_t = info.get_issue_count("failed_poly_t");
-        let too_short = info.get_issue_count("too_short_after_adapter");
+        let feature_tags = info.get_issue_count("feature_tag_match");
+        let bad_insert = info.get_issue_count("bad_insert_slice");
+        let bad_cell = info.get_issue_count("bad_cell_slice");
+        let bad_umi = info.get_issue_count("bad_umi_slice");
+        let too_short = info.get_issue_count("short_insert");
 
         let with_cassette = one + multi;
 
@@ -338,6 +354,7 @@ Output
 FASTQ reads written    : {written}
 molecules emitted      : {emitted}
 mean molecules/read    : {mean:.3}
+feature-tag molecules  : {feature_tags}
 
 Orientation
 -----------
@@ -346,8 +363,10 @@ reverse                : {rev} ({rev_pct:.2}%)
 
 Rejected
 --------
-failed polyT           : {failed_poly_t}
-too short after adapter: {too_short}
+bad insert slice       : {bad_insert}
+bad cell slice         : {bad_cell}
+bad UMI slice          : {bad_umi}
+too short insert       : {too_short}
 "#,
             total = total,
             zero = zero,
@@ -360,27 +379,43 @@ too short after adapter: {too_short}
             written = written,
             emitted = emitted,
             mean = mean,
+            feature_tags = feature_tags,
             fwd = fwd,
             rev = rev,
             fwd_pct = pct(fwd, emitted),
             rev_pct = pct(rev, emitted),
-            failed_poly_t = failed_poly_t,
+            bad_insert = bad_insert,
+            bad_cell = bad_cell,
+            bad_umi = bad_umi,
             too_short = too_short,
         )
     }
+}
 
-    fn create_tag_writer(&self) -> Result<ReadTagTableWriter<BufWriter<File>>> {
-        let file = File::create(&self.config.tags).with_context(|| {
-            format!(
-                "failed to create tags TSV: {}",
-                self.config.tags.display()
-            )
-        })?;
+    
+fn bytes_to_string(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).to_string()
+}
 
-        let writer = BufWriter::new(file);
+fn qual_to_string(qual: &[u8]) -> String {
+    qual.iter()
+        .map(|q| q.saturating_add(33) as char)
+        .collect()
+}
 
-        ReadTagTableWriter::new(writer)
+fn encode_sequence_id(seq: &[u8]) -> u64 {
+    let mut out = 0_u64;
+
+    for &base in seq.iter().take(32) {
+        out <<= 2;
+        out |= match base.to_ascii_uppercase() {
+            b'A' => 0,
+            b'C' => 1,
+            b'G' => 2,
+            b'T' => 3,
+            _ => 0,
+        };
     }
 
-
+    out
 }

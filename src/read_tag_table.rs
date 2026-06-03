@@ -1,21 +1,27 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use flate2::read::MultiGzDecoder;
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::{BufReader, Read},
-    path::{Path, PathBuf},
-};
 use mapping_info::MappingInfo;
+use serde::{Deserialize, Serialize};
 
 use csv::WriterBuilder;
-use std::io::Write;
-use std::fmt;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    fs::File,
+    io::{BufReader, Read, Write},
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Args)]
 pub struct ReadTagTableCli {
-    /// Optional external read-tag table, TSV or TSV.GZ.
+    /// Optional external read-tag table.
+    ///
+    /// Accepted formats:
+    ///
+    /// - binary `.bin` files written with `ReadTagTable::save_binary`
+    /// - TSV files
+    /// - TSV.GZ files
     ///
     /// Maps BAM query names / read IDs to observed cell barcode and UMI
     /// information. This is useful when read names are preserved after
@@ -24,34 +30,48 @@ pub struct ReadTagTableCli {
     pub read_tag_table: Vec<PathBuf>,
 
     /// Column containing the read id / BAM query name.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-read-id-column", default_value = "read_id")]
     pub rt_read_id_column: String,
 
     /// Column containing the observed cell barcode.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-cell-column", default_value = "raw_cb")]
     pub rt_cell_column: String,
 
     /// Column containing the observed cell barcode quality string.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-cell-qual-column", default_value = "quality_cb")]
     pub rt_cell_qual_column: String,
 
     /// Column containing the observed UMI.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-umi-column", default_value = "raw_umi")]
     pub rt_umi_column: String,
 
     /// Column containing the observed UMI quality string.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-umi-qual-column", default_value = "quality_umi")]
     pub rt_umi_qual_column: String,
 
     /// Optional provenance column containing the original read id.
+    ///
+    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-original-read-id-column", default_value = "original_read_id")]
     pub rt_original_read_id_column: String,
 }
 
 impl ReadTagTableCli {
-    
-    /// The CLI option bam-tag-file can given multiple times - if you expect this use this function
-    pub fn to_config_for_id(&self, id: usize) -> Result<ReadTagTableConfig>{
+    /// Build a config for one input table.
+    ///
+    /// Use this when `--read-tag-table` may be supplied multiple times and the
+    /// caller needs the table corresponding to a specific BAM/input id.
+    pub fn to_config_for_id(&self, id: usize) -> Result<ReadTagTableConfig> {
         if self.read_tag_table.is_empty() {
             anyhow::bail!("No --read-tag-table files supplied");
         }
@@ -62,7 +82,43 @@ impl ReadTagTableCli {
             .with_context(|| format!("No --read-tag-table for id {id}"))?
             .clone();
 
-        Ok(self.config_for_path( path ))
+        Ok(self.config_for_path(path))
+    }
+
+    /// Build a config for exactly one input table.
+    ///
+    /// Use this when the caller expects exactly one `--read-tag-table`.
+    pub fn to_config(&self) -> Result<ReadTagTableConfig> {
+        if self.read_tag_table.is_empty() {
+            anyhow::bail!("No --read-tag-table files supplied");
+        }
+
+        if self.read_tag_table.len() > 1 {
+            anyhow::bail!(
+                "Number of --read-tag-table files (seen {}) > 1 is not supported by this function",
+                self.read_tag_table.len()
+            );
+        }
+
+        Ok(self.config_for_path(self.read_tag_table[0].clone()))
+    }
+
+    /// Load exactly one read-tag table.
+    ///
+    /// `.bin` files are loaded with `ReadTagTable::load_binary`.
+    /// Other files are parsed as TSV / TSV.GZ using the configured column names.
+    pub fn load(&self) -> Result<ReadTagTable> {
+        let config = self.to_config()?;
+        ReadTagTable::from_path_or_config(&config)
+    }
+
+    /// Load the read-tag table for one input id.
+    ///
+    /// `.bin` files are loaded with `ReadTagTable::load_binary`.
+    /// Other files are parsed as TSV / TSV.GZ using the configured column names.
+    pub fn load_for_id(&self, id: usize) -> Result<ReadTagTable> {
+        let config = self.to_config_for_id(id)?;
+        ReadTagTable::from_path_or_config(&config)
     }
 
     fn config_for_path(&self, path: PathBuf) -> ReadTagTableConfig {
@@ -76,54 +132,64 @@ impl ReadTagTableCli {
             umi_qual_column: self.rt_umi_qual_column.clone(),
         }
     }
-
-    // The CLI option bam-tag-file can given multiple times - if you expect ONLY ONE use this function
-    pub fn to_config(&self ) -> Result<ReadTagTableConfig> {
-        if self.read_tag_table.is_empty() {
-            anyhow::bail!("No --read-tag-table files supplied");
-        }
-
-        if self.read_tag_table.len() >1  {
-            anyhow::bail!(
-                "Number of --read-tag-table files (seen {}) > 1 is not supported by this function!",
-                self.read_tag_table.len()
-            );
-        }
-
-        Ok(self.config_for_path(self.read_tag_table[0].clone()))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ReadTagTableConfig {
-    pub path: PathBuf,
-    pub read_id_column: String,
-    pub original_read_id_column: String,
-    pub cell_column: String,
-    pub cell_qual_column: String,
-    pub umi_column: String,
-    pub umi_qual_column: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadTagRecord {
     pub read_id: String,
     pub original_read_id: Option<String>,
-    pub cell: String,
-    pub cell_qual: Option<String>,
-    pub umi: String,
-    pub umi_qual: Option<String>,
+    pub cell_seq: Vec<u8>,
+    pub cell_qual: Vec<u8>,
+    pub umi_seq: Vec<u8>,
+    pub umi_qual: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl ReadTagRecord {
+    pub fn new(
+        read_id: String,
+        original_read_id: Option<String>,
+        cell_seq: Vec<u8>,
+        cell_qual: Vec<u8>,
+        umi_seq: Vec<u8>,
+        umi_qual: Vec<u8>,
+    ) -> Self {
+        Self {
+            read_id,
+            original_read_id,
+            cell_seq,
+            cell_qual,
+            umi_seq,
+            umi_qual,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReadTagTable {
     records: HashMap<String, ReadTagRecord>,
-    //mapping_info: MappingInfo,
 }
-a
+
 impl ReadTagTable {
+    pub fn new() -> Self {
+        Self {
+            records: HashMap::new(),
+        }
+    }
+
+    /// Load either a binary `.bin` read-tag table or a TSV / TSV.GZ table.
+    pub fn from_path_or_config(config: &ReadTagTableConfig) -> Result<Self> {
+        if is_binary_read_tag_table(&config.path) {
+            Self::load_binary(&config.path)
+        } else {
+            Self::from_config(config)
+        }
+    }
+
+    /// Parse a TSV / TSV.GZ read-tag table using explicit column names.
+    ///
+    /// For automatic `.bin` support, prefer `from_path_or_config`.
     pub fn from_config(config: &ReadTagTableConfig) -> Result<Self> {
-        let mut mapping_info = mapping_info::MappingInfo::new( None, 0.0, 0);        
+        let mut mapping_info = MappingInfo::new(None, 0.0, 0);
 
         let reader = open_maybe_gz(&config.path)?;
 
@@ -170,11 +236,9 @@ impl ReadTagTable {
 
         mapping_info.stop_file_io_time();
 
-        
-        let (h, m, s, ms) =
-            MappingInfo::split_duration(mapping_info.file_io_time);
+        let (h, m, s, ms) = MappingInfo::split_duration(mapping_info.file_io_time);
         println!(
-            "Read-tag table loaded: {} entries in {}:{:02}:{:02}.{:03}",
+            "Read-tag table loaded from TSV: {} entries in {}:{:02}:{:02}.{:03}",
             records.len(),
             h,
             m,
@@ -182,16 +246,16 @@ impl ReadTagTable {
             ms,
         );
 
-        Ok(Self { 
-            records,
-           //mapping_info,
-        })
+        Ok(Self { records })
     }
 
+    /// Save the internal binary read-tag table.
+    ///
+    /// This is the default bam_tide interchange format for generated read-tag
+    /// tables. TSV should be treated as an explicit export/interoperability path.
     pub fn save_binary<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let file = File::create(path)
-            .with_context(|| format!("creating {}", path.display()))?;
+        let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
 
         bincode::serialize_into(file, self)
             .with_context(|| format!("writing binary read-tag table {}", path.display()))?;
@@ -199,10 +263,14 @@ impl ReadTagTable {
         Ok(())
     }
 
+    /// Alias for the default save format.
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        self.save_binary(path)
+    }
+
     pub fn load_binary<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        let file = File::open(path)
-            .with_context(|| format!("opening {}", path.display()))?;
+        let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
 
         let table: Self = bincode::deserialize_from(file)
             .with_context(|| format!("reading binary read-tag table {}", path.display()))?;
@@ -257,6 +325,12 @@ impl ReadTagTable {
     }
 }
 
+fn is_binary_read_tag_table(path: &Path) -> bool {
+    path.extension()
+        .and_then(|x| x.to_str())
+        .is_some_and(|x| x.eq_ignore_ascii_case("bin"))
+}
+
 #[derive(Debug, Clone)]
 pub struct PairStats {
     pub cell_entries: usize,
@@ -298,7 +372,7 @@ impl PairStats {
 
         let mut final_cell_to_umi_count: HashMap<&str, u64> = HashMap::new();
         let mut final_pair_counts = Vec::new();
-        let mut total_pair_observations = 0u64;
+        let mut total_pair_observations = 0_u64;
 
         for ((cell, _umi), count) in cb_umi_counts {
             if *count < min_pair_count {
@@ -404,7 +478,6 @@ fn open_maybe_gz(path: &Path) -> Result<Box<dyn Read>> {
     }
 }
 
-
 pub const READ_TAG_TABLE_COLUMNS: [&str; 8] = [
     "read_id",
     "original_read_id",
@@ -474,7 +547,6 @@ impl<W: Write> ReadTagTableWriter<W> {
     }
 }
 
-
 impl fmt::Display for ReadTagRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -502,15 +574,11 @@ impl fmt::Display for ReadTagTable {
     }
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use flate2::{write::GzEncoder, Compression};
     use std::fs;
-    use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn tmp_path(name: &str) -> PathBuf {
@@ -559,7 +627,10 @@ mod tests {
 
         let rec = table.get("read1").unwrap();
         assert_eq!(rec.read_id, "read1");
-        assert_eq!(rec.original_read_id.as_ref(), Some("orig1".to_string()).as_ref());
+        assert_eq!(
+            rec.original_read_id.as_ref(),
+            Some("orig1".to_string()).as_ref()
+        );
         assert_eq!(rec.cell, "CELL1");
         assert_eq!(rec.cell_qual.as_ref(), Some("IIII".to_string()).as_ref());
         assert_eq!(rec.umi, "UMI1");
@@ -650,6 +721,64 @@ mod tests {
     }
 
     #[test]
+    fn loads_binary_when_extension_is_bin() {
+        let path = tmp_path("read_tags.bin");
+
+        let mut table = ReadTagTable::new();
+        table.insert(ReadTagRecord {
+            read_id: "read1".to_string(),
+            original_read_id: Some("orig1".to_string()),
+            cell: "CELL1".to_string(),
+            cell_qual: Some("IIII".to_string()),
+            umi: "UMI1".to_string(),
+            umi_qual: Some("JJJJ".to_string()),
+        });
+
+        table.save_binary(&path).unwrap();
+
+        let loaded = ReadTagTable::from_path_or_config(&default_config(path.clone())).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn cli_load_uses_binary_for_bin_extension() {
+        let path = tmp_path("cli_read_tags.bin");
+
+        let mut table = ReadTagTable::new();
+        table.insert(ReadTagRecord {
+            read_id: "read1".to_string(),
+            original_read_id: None,
+            cell: "CELL1".to_string(),
+            cell_qual: None,
+            umi: "UMI1".to_string(),
+            umi_qual: None,
+        });
+
+        table.save_binary(&path).unwrap();
+
+        let cli = ReadTagTableCli {
+            read_tag_table: vec![path.clone()],
+            rt_read_id_column: "read_id".to_string(),
+            rt_cell_column: "raw_cb".to_string(),
+            rt_cell_qual_column: "quality_cb".to_string(),
+            rt_umi_column: "raw_umi".to_string(),
+            rt_umi_qual_column: "quality_umi".to_string(),
+            rt_original_read_id_column: "original_read_id".to_string(),
+        };
+
+        let loaded = cli.load().unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn pair_counts_counts_cell_umi_observations() {
         let path = tmp_path("pairs.tsv");
 
@@ -667,9 +796,18 @@ mod tests {
         let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
         let counts = table.pair_counts();
 
-        assert_eq!(counts.get(&("CELL1".to_string(), "UMI1".to_string())), Some(&2));
-        assert_eq!(counts.get(&("CELL1".to_string(), "UMI2".to_string())), Some(&1));
-        assert_eq!(counts.get(&("CELL2".to_string(), "UMI3".to_string())), Some(&1));
+        assert_eq!(
+            counts.get(&("CELL1".to_string(), "UMI1".to_string())),
+            Some(&2)
+        );
+        assert_eq!(
+            counts.get(&("CELL1".to_string(), "UMI2".to_string())),
+            Some(&1)
+        );
+        assert_eq!(
+            counts.get(&("CELL2".to_string(), "UMI3".to_string())),
+            Some(&1)
+        );
 
         fs::remove_file(path).ok();
     }
@@ -752,7 +890,10 @@ mod tests {
 
         assert!(text.contains("ReadTagTable: 4 records"));
 
-        let shown_records = text.lines().filter(|line| line.trim_start().starts_with('[')).count();
+        let shown_records = text
+            .lines()
+            .filter(|line| line.trim_start().starts_with('['))
+            .count();
 
         assert_eq!(shown_records, 3);
 

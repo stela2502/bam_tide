@@ -58,37 +58,6 @@ impl FastqRecord {
         self.seq.is_empty()
     }
 
-/*
-    pub fn split_by_primer_detector(
-        &self,
-        detector: &PrimerDetector,
-        stats: &mut MappingInfo,
-    ) -> Vec<FastqRecord> {
-        let hits = detector.detect_both_orientations(self, stats);
-
-        hits.iter()
-            .enumerate()
-            .map(|(i, hit)| self.to_normalized_primer_read(i, hit))
-            .collect()
-    }
-
-    fn to_normalized_primer_read(&self, i: usize, hit: &PrimerHit) -> FastqRecord {
-        let oriented = match hit.orientation {
-            Orientation::Forward => self.clone(),
-            Orientation::ReverseComplement => self.revcomp(format!("{}/rc", self.id)),
-        };
-
-        let cell = String::from_utf8_lossy(&hit.cell_id.unwrap_or(FastqRecord::default()).seq);
-        let umi = String::from_utf8_lossy(&hit.umi.unwrap_or(FastqRecord::default()).seq);
-
-        oriented.clipped(
-            format!("{}_{} CB:{} UMI:{}", self.id, i, cell, umi),
-            hit.read_start,
-            hit.segment_end,
-        )
-    }
-*/    
-
     pub fn from_bam_record(rec: &rust_htslib::bam::Record) -> Self {
         let seq = rec.seq().as_bytes();
         Self::new(
@@ -112,12 +81,11 @@ impl FastqRecord {
             .collect()
     }
 
-    pub fn revcomp(&self, id: impl Into<String>) -> Self {
+    pub fn revcomp(&self ) -> Self {
         let rc_seq = Self::revcomp_seq(&self.seq);
 
         let rc_qual: Vec<u8> = self.qual.iter().rev().copied().collect();
-
-        Self::new(id, &rc_seq, &rc_qual)
+        Self::new(self.id.clone(), &rc_seq, &rc_qual)
     }
     
     pub fn revcomp_seq(seq: &[u8]) -> Vec<u8> {
@@ -219,9 +187,9 @@ mod tests {
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         );
 
-        let rc = rec.revcomp("read1/rc");
+        let rc = rec.revcomp();
 
-        assert_eq!(rc.id, "read1/rc");
+        assert_eq!(rc.id, rec.id );
         assert_eq!(rc.seq, b"nacgtNACGT");
         assert_eq!(rc.qual, vec![10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
     }

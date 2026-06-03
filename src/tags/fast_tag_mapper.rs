@@ -102,6 +102,7 @@ pub struct FastTagMapper {
     kmer_size: usize,
     tags: Vec<TagEntry>,
     seed_to_tags: HashMap<u64, Vec<usize>>,
+    name_to_id: HashMap<String, u64>,
     max_mismatches: usize,
     min_overlap_fraction: f32,
     max_leading_bases: usize,
@@ -114,7 +115,7 @@ impl FastTagMapper {
             kmer_size,
             
             tags: Vec::new(),
-            name_to_id: HashMap<String, u64>,
+            name_to_id: HashMap::new(),
 
             seed_to_tags: HashMap::new(),
             max_mismatches: 2,
@@ -123,7 +124,7 @@ impl FastTagMapper {
         }
     }
     pub fn tags(&self) -> &[TagEntry] {
-        self.tags
+        &self.tags
     }
 
     pub fn tag(&self, id: usize) -> Option<&TagEntry> {
@@ -440,9 +441,7 @@ fn encode_kmer(kmer: &[u8]) -> Option<u64> {
         return None;
     }
 
-    IntToStr::new(kmer.to_ascii_uppercase(), kmer.len())
-        .ok()
-        .map(|x| x.into_u64())
+    Some(IntToStr::new(kmer.to_ascii_uppercase()).into_u64())
 }
 
 pub const BD_HUMAN_SAMPLE_TAGS: [&[u8]; 12] = [
