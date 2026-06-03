@@ -1496,7 +1496,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "sc_primer"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/sc_primer#c414b267697cf1c077fda1302db93a63ce35d081"
+source = "git+https://github.com/stela2502/sc_primer#4197ae711c80a243df482b8bddf5502dd737b5ea"
 dependencies = [
  "clap",
 ]

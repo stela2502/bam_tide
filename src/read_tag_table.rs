@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use csv::WriterBuilder;
 use flate2::read::MultiGzDecoder;
 use mapping_info::MappingInfo;
 use serde::{Deserialize, Serialize};
 
-use csv::WriterBuilder;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -18,59 +18,32 @@ pub struct ReadTagTableCli {
     /// Optional external read-tag table.
     ///
     /// Accepted formats:
-    ///
     /// - binary `.bin` files written with `ReadTagTable::save_binary`
     /// - TSV files
     /// - TSV.GZ files
-    ///
-    /// Maps BAM query names / read IDs to observed cell barcode and UMI
-    /// information. This is useful when read names are preserved after
-    /// preprocessing and alignment.
     #[arg(long = "read-tag-table", num_args = 1..)]
     pub read_tag_table: Vec<PathBuf>,
 
-    /// Column containing the read id / BAM query name.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-read-id-column", default_value = "read_id")]
     pub rt_read_id_column: String,
 
-    /// Column containing the observed cell barcode.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-cell-column", default_value = "raw_cb")]
     pub rt_cell_column: String,
 
-    /// Column containing the observed cell barcode quality string.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-cell-qual-column", default_value = "quality_cb")]
     pub rt_cell_qual_column: String,
 
-    /// Column containing the observed UMI.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-umi-column", default_value = "raw_umi")]
     pub rt_umi_column: String,
 
-    /// Column containing the observed UMI quality string.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-umi-qual-column", default_value = "quality_umi")]
     pub rt_umi_qual_column: String,
 
-    /// Optional provenance column containing the original read id.
-    ///
-    /// Only used for TSV / TSV.GZ input. Ignored for `.bin`.
     #[arg(long = "rt-original-read-id-column", default_value = "original_read_id")]
     pub rt_original_read_id_column: String,
 }
 
 impl ReadTagTableCli {
-    /// Build a config for one input table.
-    ///
-    /// Use this when `--read-tag-table` may be supplied multiple times and the
-    /// caller needs the table corresponding to a specific BAM/input id.
     pub fn to_config_for_id(&self, id: usize) -> Result<ReadTagTableConfig> {
         if self.read_tag_table.is_empty() {
             anyhow::bail!("No --read-tag-table files supplied");
@@ -85,9 +58,6 @@ impl ReadTagTableCli {
         Ok(self.config_for_path(path))
     }
 
-    /// Build a config for exactly one input table.
-    ///
-    /// Use this when the caller expects exactly one `--read-tag-table`.
     pub fn to_config(&self) -> Result<ReadTagTableConfig> {
         if self.read_tag_table.is_empty() {
             anyhow::bail!("No --read-tag-table files supplied");
@@ -103,19 +73,11 @@ impl ReadTagTableCli {
         Ok(self.config_for_path(self.read_tag_table[0].clone()))
     }
 
-    /// Load exactly one read-tag table.
-    ///
-    /// `.bin` files are loaded with `ReadTagTable::load_binary`.
-    /// Other files are parsed as TSV / TSV.GZ using the configured column names.
     pub fn load(&self) -> Result<ReadTagTable> {
         let config = self.to_config()?;
         ReadTagTable::from_path_or_config(&config)
     }
 
-    /// Load the read-tag table for one input id.
-    ///
-    /// `.bin` files are loaded with `ReadTagTable::load_binary`.
-    /// Other files are parsed as TSV / TSV.GZ using the configured column names.
     pub fn load_for_id(&self, id: usize) -> Result<ReadTagTable> {
         let config = self.to_config_for_id(id)?;
         ReadTagTable::from_path_or_config(&config)
@@ -134,6 +96,17 @@ impl ReadTagTableCli {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ReadTagTableConfig {
+    pub path: PathBuf,
+    pub read_id_column: String,
+    pub original_read_id_column: String,
+    pub cell_column: String,
+    pub cell_qual_column: String,
+    pub umi_column: String,
+    pub umi_qual_column: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadTagRecord {
     pub read_id: String,
@@ -148,19 +121,71 @@ impl ReadTagRecord {
     pub fn new(
         read_id: String,
         original_read_id: Option<String>,
-        cell_seq: Vec<u8>,
-        cell_qual: Vec<u8>,
-        umi_seq: Vec<u8>,
-        umi_qual: Vec<u8>,
+        cell_seq: impl AsRef<[u8]>,
+        cell_qual: impl AsRef<[u8]>,
+        umi_seq: impl AsRef<[u8]>,
+        umi_qual: impl AsRef<[u8]>,
     ) -> Self {
         Self {
             read_id,
             original_read_id,
-            cell_seq,
-            cell_qual,
-            umi_seq,
-            umi_qual,
+            cell_seq: cell_seq.as_ref().to_vec(),
+            cell_qual: cell_qual.as_ref().to_vec(),
+            umi_seq: umi_seq.as_ref().to_vec(),
+            umi_qual: umi_qual.as_ref().to_vec(),
         }
+    }
+
+    pub fn from_slices(
+        read_id: impl Into<String>,
+        original_read_id: Option<String>,
+        cell_seq: &[u8],
+        cell_qual: &[u8],
+        umi_seq: &[u8],
+        umi_qual: &[u8],
+    ) -> Self {
+        Self::new(
+            read_id.into(),
+            original_read_id,
+            cell_seq.to_vec(),
+            cell_qual.to_vec(),
+            umi_seq.to_vec(),
+            umi_qual.to_vec(),
+        )
+    }
+
+    pub fn from_tsv_fields(
+        read_id: impl Into<String>,
+        original_read_id: Option<String>,
+        cell: &str,
+        cell_qual: Option<&str>,
+        umi: &str,
+        umi_qual: Option<&str>,
+    ) -> Self {
+        Self::new(
+            read_id.into(),
+            original_read_id,
+            cell.as_bytes().to_vec(),
+            cell_qual.map(phred_from_ascii).unwrap_or_default(),
+            umi.as_bytes().to_vec(),
+            umi_qual.map(phred_from_ascii).unwrap_or_default(),
+        )
+    }
+
+    pub fn cell_string(&self) -> String {
+        seq_to_string(&self.cell_seq)
+    }
+
+    pub fn umi_string(&self) -> String {
+        seq_to_string(&self.umi_seq)
+    }
+
+    pub fn cell_qual_string(&self) -> String {
+        phred_to_ascii(&self.cell_qual)
+    }
+
+    pub fn umi_qual_string(&self) -> String {
+        phred_to_ascii(&self.umi_qual)
     }
 }
 
@@ -176,7 +201,6 @@ impl ReadTagTable {
         }
     }
 
-    /// Load either a binary `.bin` read-tag table or a TSV / TSV.GZ table.
     pub fn from_path_or_config(config: &ReadTagTableConfig) -> Result<Self> {
         if is_binary_read_tag_table(&config.path) {
             Self::load_binary(&config.path)
@@ -185,12 +209,8 @@ impl ReadTagTable {
         }
     }
 
-    /// Parse a TSV / TSV.GZ read-tag table using explicit column names.
-    ///
-    /// For automatic `.bin` support, prefer `from_path_or_config`.
     pub fn from_config(config: &ReadTagTableConfig) -> Result<Self> {
         let mut mapping_info = MappingInfo::new(None, 0.0, 0);
-
         let reader = open_maybe_gz(&config.path)?;
 
         let mut rdr = csv::ReaderBuilder::new()
@@ -222,14 +242,14 @@ impl ReadTagTable {
                 continue;
             }
 
-            let record = ReadTagRecord {
-                read_id: read_id.to_string(),
-                original_read_id: get_optional(&rec, original_read_id_ix),
-                cell: cell.to_string(),
-                cell_qual: get_optional(&rec, cell_qual_ix),
-                umi: umi.to_string(),
-                umi_qual: get_optional(&rec, umi_qual_ix),
-            };
+            let record = ReadTagRecord::from_tsv_fields(
+                read_id.to_string(),
+                get_optional(&rec, original_read_id_ix),
+                cell,
+                get_optional_ref(&rec, cell_qual_ix),
+                umi,
+                get_optional_ref(&rec, umi_qual_ix),
+            );
 
             records.insert(read_id.to_string(), record);
         }
@@ -249,10 +269,6 @@ impl ReadTagTable {
         Ok(Self { records })
     }
 
-    /// Save the internal binary read-tag table.
-    ///
-    /// This is the default bam_tide interchange format for generated read-tag
-    /// tables. TSV should be treated as an explicit export/interoperability path.
     pub fn save_binary<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
@@ -263,7 +279,6 @@ impl ReadTagTable {
         Ok(())
     }
 
-    /// Alias for the default save format.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         self.save_binary(path)
     }
@@ -282,9 +297,14 @@ impl ReadTagTable {
         self.records.get(read_id)
     }
 
-    pub fn cell_umi_for_read(&self, read_id: &str) -> Option<(&str, &str)> {
+    pub fn cell_umi_for_read(&self, read_id: &str) -> Option<(String, String)> {
         let rec = self.records.get(read_id)?;
-        Some((rec.cell.as_str(), rec.umi.as_str()))
+        Some((rec.cell_string(), rec.umi_string()))
+    }
+
+    pub fn cell_umi_bytes_for_read(&self, read_id: &str) -> Option<(&[u8], &[u8])> {
+        let rec = self.records.get(read_id)?;
+        Some((rec.cell_seq.as_slice(), rec.umi_seq.as_slice()))
     }
 
     pub fn len(&self) -> usize {
@@ -295,16 +315,16 @@ impl ReadTagTable {
         self.records.is_empty()
     }
 
-    pub fn pair_counts(&self) -> HashMap<(String, String), u64> {
+    pub fn pair_counts(&self) -> HashMap<(Vec<u8>, Vec<u8>), u64> {
         let mut counts = HashMap::new();
 
         for rec in self.records.values() {
-            if rec.cell.is_empty() || rec.umi.is_empty() {
+            if rec.cell_seq.is_empty() || rec.umi_seq.is_empty() {
                 continue;
             }
 
             *counts
-                .entry((rec.cell.clone(), rec.umi.clone()))
+                .entry((rec.cell_seq.clone(), rec.umi_seq.clone()))
                 .or_insert(0) += 1;
         }
 
@@ -322,6 +342,16 @@ impl ReadTagTable {
     pub fn summarize_pairs(&self, min_pair_count: u64, min_cell_umis: u64) -> PairStats {
         let counts = self.pair_counts();
         PairStats::from_counts(&counts, min_pair_count, min_cell_umis)
+    }
+
+    pub fn write_tsv<W: Write>(&self, inner: W) -> Result<()> {
+        let mut writer = ReadTagTableWriter::new(inner)?;
+
+        for record in self.records.values() {
+            writer.write_record(record)?;
+        }
+
+        writer.flush()
     }
 }
 
@@ -342,11 +372,11 @@ pub struct PairStats {
 
 impl PairStats {
     pub fn from_counts(
-        cb_umi_counts: &HashMap<(String, String), u64>,
+        cb_umi_counts: &HashMap<(Vec<u8>, Vec<u8>), u64>,
         min_pair_count: u64,
         min_cell_umis: u64,
     ) -> Self {
-        let mut cell_to_umis: HashMap<&str, HashSet<&str>> = HashMap::new();
+        let mut cell_to_umis: HashMap<&[u8], HashSet<&[u8]>> = HashMap::new();
 
         for ((cell, umi), count) in cb_umi_counts {
             if *count < min_pair_count {
@@ -354,12 +384,12 @@ impl PairStats {
             }
 
             cell_to_umis
-                .entry(cell.as_str())
+                .entry(cell.as_slice())
                 .or_default()
-                .insert(umi.as_str());
+                .insert(umi.as_slice());
         }
 
-        let valid_cells: HashSet<&str> = cell_to_umis
+        let valid_cells: HashSet<&[u8]> = cell_to_umis
             .iter()
             .filter_map(|(cell, umis)| {
                 if umis.len() as u64 >= min_cell_umis {
@@ -370,7 +400,7 @@ impl PairStats {
             })
             .collect();
 
-        let mut final_cell_to_umi_count: HashMap<&str, u64> = HashMap::new();
+        let mut final_cell_to_umi_count: HashMap<&[u8], u64> = HashMap::new();
         let mut final_pair_counts = Vec::new();
         let mut total_pair_observations = 0_u64;
 
@@ -379,11 +409,11 @@ impl PairStats {
                 continue;
             }
 
-            if !valid_cells.contains(cell.as_str()) {
+            if !valid_cells.contains(cell.as_slice()) {
                 continue;
             }
 
-            *final_cell_to_umi_count.entry(cell.as_str()).or_insert(0) += 1;
+            *final_cell_to_umi_count.entry(cell.as_slice()).or_insert(0) += 1;
             final_pair_counts.push(*count);
             total_pair_observations += *count;
         }
@@ -467,6 +497,16 @@ fn get_optional(rec: &csv::StringRecord, ix: Option<usize>) -> Option<String> {
     }
 }
 
+fn get_optional_ref<'a>(rec: &'a csv::StringRecord, ix: Option<usize>) -> Option<&'a str> {
+    let value = rec.get(ix?)?.trim();
+
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 fn open_maybe_gz(path: &Path) -> Result<Box<dyn Read>> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let reader = BufReader::new(file);
@@ -475,6 +515,31 @@ fn open_maybe_gz(path: &Path) -> Result<Box<dyn Read>> {
         Ok(Box::new(MultiGzDecoder::new(reader)))
     } else {
         Ok(Box::new(reader))
+    }
+}
+
+fn seq_to_string(seq: &[u8]) -> String {
+    String::from_utf8_lossy(seq).to_string()
+}
+
+fn phred_from_ascii(text: &str) -> Vec<u8> {
+    text.as_bytes()
+        .iter()
+        .map(|q| q.saturating_sub(33))
+        .collect()
+}
+
+fn phred_to_ascii(qual: &[u8]) -> String {
+    qual.iter()
+        .map(|q| q.saturating_add(33) as char)
+        .collect()
+}
+
+fn display_qual(qual: &[u8]) -> String {
+    if qual.is_empty() {
+        "-".to_string()
+    } else {
+        phred_to_ascii(qual)
     }
 }
 
@@ -519,7 +584,26 @@ impl<W: Write> ReadTagTableWriter<W> {
         Ok(Self { writer })
     }
 
-    pub fn write_record(&mut self, rec: &ReadTagWriteRecord<'_>) -> Result<()> {
+    pub fn write_record(&mut self, rec: &ReadTagRecord) -> Result<()> {
+        self.writer
+            .write_record([
+                rec.read_id.as_str(),
+                rec.original_read_id.as_deref().unwrap_or(""),
+                "",
+                rec.cell_string().as_str(),
+                rec.cell_qual_string().as_str(),
+                rec.umi_string().as_str(),
+                rec.umi_qual_string().as_str(),
+                "ok",
+            ])
+            .with_context(|| format!("writing read-tag table row for read_id '{}'", rec.read_id))?;
+
+        Ok(())
+    }
+
+    /// Compatibility shim for older TSV-streaming code.
+    /// Normalizers should prefer `ReadTagTable::insert()` + `ReadTagTable::save()`.
+    pub fn write_tsv_record(&mut self, rec: &ReadTagWriteRecord<'_>) -> Result<()> {
         self.writer
             .write_record([
                 rec.read_id,
@@ -531,12 +615,7 @@ impl<W: Write> ReadTagTableWriter<W> {
                 &rec.quality_umi,
                 rec.status,
             ])
-            .with_context(|| {
-                format!(
-                    "writing read-tag table row for read_id '{}'",
-                    rec.read_id
-                )
-            })?;
+            .with_context(|| format!("writing read-tag table row for read_id '{}'", rec.read_id))?;
 
         Ok(())
     }
@@ -554,10 +633,10 @@ impl fmt::Display for ReadTagRecord {
             "read_id={}, original_read_id={}, cell={}, cell_qual={}, umi={}, umi_qual={}",
             self.read_id,
             self.original_read_id.as_deref().unwrap_or("-"),
-            self.cell,
-            self.cell_qual.as_deref().unwrap_or("-"),
-            self.umi,
-            self.umi_qual.as_deref().unwrap_or("-"),
+            self.cell_string(),
+            display_qual(&self.cell_qual),
+            self.umi_string(),
+            display_qual(&self.umi_qual),
         )
     }
 }
@@ -627,19 +706,16 @@ mod tests {
 
         let rec = table.get("read1").unwrap();
         assert_eq!(rec.read_id, "read1");
-        assert_eq!(
-            rec.original_read_id.as_ref(),
-            Some("orig1".to_string()).as_ref()
-        );
-        assert_eq!(rec.cell, "CELL1");
-        assert_eq!(rec.cell_qual.as_ref(), Some("IIII".to_string()).as_ref());
-        assert_eq!(rec.umi, "UMI1");
-        assert_eq!(rec.umi_qual.as_ref(), Some("JJJJ".to_string()).as_ref());
+        assert_eq!(rec.original_read_id.as_deref(), Some("orig1"));
+        assert_eq!(rec.cell_seq, b"CELL1");
+        assert_eq!(rec.cell_qual, vec![40, 40, 40, 40]);
+        assert_eq!(rec.umi_seq, b"UMI1");
+        assert_eq!(rec.umi_qual, vec![41, 41, 41, 41]);
 
         let rec = table.get("read3").unwrap();
         assert_eq!(rec.original_read_id, None);
-        assert_eq!(rec.cell_qual, None);
-        assert_eq!(rec.umi_qual, None);
+        assert!(rec.cell_qual.is_empty());
+        assert!(rec.umi_qual.is_empty());
 
         fs::remove_file(path).ok();
     }
@@ -672,13 +748,7 @@ mod tests {
     fn missing_required_column_returns_error() {
         let path = tmp_path("bad_columns.tsv");
 
-        write_text(
-            &path,
-            concat!(
-                "read_id\traw_cb\n",
-                "read1\tCELL1\n",
-            ),
-        );
+        write_text(&path, concat!("read_id\traw_cb\n", "read1\tCELL1\n",));
 
         let err = ReadTagTable::from_config(&default_config(path.clone()))
             .unwrap_err()
@@ -714,7 +784,10 @@ mod tests {
         let table = ReadTagTable::from_config(&default_config(path.clone())).unwrap();
 
         assert_eq!(table.len(), 2);
-        assert_eq!(table.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+        assert_eq!(
+            table.cell_umi_for_read("read1"),
+            Some(("CELL1".to_string(), "UMI1".to_string()))
+        );
         assert_eq!(table.cell_umi_for_read("missing"), None);
 
         fs::remove_file(path).ok();
@@ -725,21 +798,24 @@ mod tests {
         let path = tmp_path("read_tags.bin");
 
         let mut table = ReadTagTable::new();
-        table.insert(ReadTagRecord {
-            read_id: "read1".to_string(),
-            original_read_id: Some("orig1".to_string()),
-            cell: "CELL1".to_string(),
-            cell_qual: Some("IIII".to_string()),
-            umi: "UMI1".to_string(),
-            umi_qual: Some("JJJJ".to_string()),
-        });
+        table.insert(ReadTagRecord::new(
+            "read1".to_string(),
+            Some("orig1".to_string()),
+            b"CELL1".to_vec(),
+            vec![40, 40, 40, 40],
+            b"UMI1".to_vec(),
+            vec![41, 41, 41, 41],
+        ));
 
         table.save_binary(&path).unwrap();
 
         let loaded = ReadTagTable::from_path_or_config(&default_config(path.clone())).unwrap();
 
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+        assert_eq!(
+            loaded.cell_umi_for_read("read1"),
+            Some(("CELL1".to_string(), "UMI1".to_string()))
+        );
 
         fs::remove_file(path).ok();
     }
@@ -749,14 +825,14 @@ mod tests {
         let path = tmp_path("cli_read_tags.bin");
 
         let mut table = ReadTagTable::new();
-        table.insert(ReadTagRecord {
-            read_id: "read1".to_string(),
-            original_read_id: None,
-            cell: "CELL1".to_string(),
-            cell_qual: None,
-            umi: "UMI1".to_string(),
-            umi_qual: None,
-        });
+        table.insert(ReadTagRecord::new(
+            "read1".to_string(),
+            None,
+            b"CELL1".to_vec(),
+            Vec::new(),
+            b"UMI1".to_vec(),
+            Vec::new(),
+        ));
 
         table.save_binary(&path).unwrap();
 
@@ -773,7 +849,10 @@ mod tests {
         let loaded = cli.load().unwrap();
 
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded.cell_umi_for_read("read1"), Some(("CELL1", "UMI1")));
+        assert_eq!(
+            loaded.cell_umi_for_read("read1"),
+            Some(("CELL1".to_string(), "UMI1".to_string()))
+        );
 
         fs::remove_file(path).ok();
     }
@@ -797,15 +876,15 @@ mod tests {
         let counts = table.pair_counts();
 
         assert_eq!(
-            counts.get(&("CELL1".to_string(), "UMI1".to_string())),
+            counts.get(&(b"CELL1".to_vec(), b"UMI1".to_vec())),
             Some(&2)
         );
         assert_eq!(
-            counts.get(&("CELL1".to_string(), "UMI2".to_string())),
+            counts.get(&(b"CELL1".to_vec(), b"UMI2".to_vec())),
             Some(&1)
         );
         assert_eq!(
-            counts.get(&("CELL2".to_string(), "UMI3".to_string())),
+            counts.get(&(b"CELL2".to_vec(), b"UMI3".to_vec())),
             Some(&1)
         );
 
@@ -851,14 +930,14 @@ mod tests {
 
     #[test]
     fn display_for_record_is_informative() {
-        let rec = ReadTagRecord {
-            read_id: "read1".to_string(),
-            original_read_id: Some("orig1".to_string()),
-            cell: "CELL1".to_string(),
-            cell_qual: None,
-            umi: "UMI1".to_string(),
-            umi_qual: Some("JJJJ".to_string()),
-        };
+        let rec = ReadTagRecord::new(
+            "read1".to_string(),
+            Some("orig1".to_string()),
+            b"CELL1".to_vec(),
+            Vec::new(),
+            b"UMI1".to_vec(),
+            vec![41, 41, 41, 41],
+        );
 
         let text = rec.to_string();
 
@@ -908,16 +987,14 @@ mod tests {
             let mut writer = ReadTagTableWriter::new(&mut out).unwrap();
 
             writer
-                .write_record(&ReadTagWriteRecord {
-                    read_id: "read1",
-                    original_read_id: Some("orig1"),
-                    orientation: Some("Forward"),
-                    raw_cb: "CELL1".to_string(),
-                    quality_cb: "IIII".to_string(),
-                    raw_umi: "UMI1".to_string(),
-                    quality_umi: "JJJJ".to_string(),
-                    status: "ok",
-                })
+                .write_record(&ReadTagRecord::new(
+                    "read1".to_string(),
+                    Some("orig1".to_string()),
+                    b"CELL1".to_vec(),
+                    vec![40, 40, 40, 40],
+                    b"UMI1".to_vec(),
+                    vec![41, 41, 41, 41],
+                ))
                 .unwrap();
 
             writer.flush().unwrap();
@@ -927,7 +1004,7 @@ mod tests {
 
         assert!(text.starts_with(&READ_TAG_TABLE_COLUMNS.join("\t")));
         assert!(text.contains(
-            "read1\torig1\tForward\tCELL1\tIIII\tUMI1\tJJJJ\tok"
+            "read1\torig1\t\tCELL1\tIIII\tUMI1\tJJJJ\tok"
         ));
     }
 }

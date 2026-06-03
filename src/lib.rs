@@ -14,6 +14,8 @@ pub mod fastq;
 pub mod illumina_normalizer;
 pub mod tags;
 
+pub mod ngs_normalizer;
+
 pub mod transcriptome_to_genome;
 
 pub mod encoder;

@@ -40,7 +40,7 @@ impl FeatureIndex for FastTagFeatureIndex<'_> {
     }
 
     fn to_10x_feature_line(&self, feature_id: u64) -> String {
-        let name = self.mapper.tag(feature_id as usize);
+        let name = &self.mapper.tag(feature_id as usize).expect("Feature id {feature_id} was not found in the feature index!").name;
         format!("{name}\t{name}\tAntibody Capture")
     }
 }
