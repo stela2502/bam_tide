@@ -99,7 +99,9 @@ pub struct NgsNormalizerSupport;
 
 impl NgsNormalizerSupport {
     pub fn new_stats() -> MappingInfo {
-        MappingInfo::new(None, 0.0, 0)
+        let mut info = MappingInfo::new(None, 0.0, 0);
+        info.start_counter();
+        info
     }
 
     pub fn new_feature_tag_table() -> Scdata {
