@@ -7,6 +7,9 @@ fn main() -> Result<()> {
     let mut normalizer = IlluminaNormalizer::from_cli(cli)
         .context("failed to initialize Illumina normalizer")?;
 
+    std::fs::create_dir_all(normalizer.config().out.parent().unwrap_or_else(|| normalizer.config().out.as_path()))
+        .with_context(|| format!("failed to create output directory: {}", normalizer.config().out.display()))?;
+
     normalizer
         .run()
         .context("Illumina normalizer failed while processing input FASTQ files")?;

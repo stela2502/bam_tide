@@ -59,6 +59,13 @@ impl TagCall {
         }
     }
 
+    pub fn success(&self) -> bool{
+        match self {
+          Self::Match{..} => true,
+          _ => false,
+        }
+    }
+
     pub fn tag_id_string(&self) -> String {
         match self {
             Self::Match { tag_id, .. } => tag_id.to_string(),
@@ -80,6 +87,42 @@ impl TagCall {
             Self::Match { tag_id, .. } => Some(*tag_id as u64),
             Self::NoMatch { .. } => None,
             Self::MultiMatch { .. } => None,
+        }
+    }
+    pub fn diagnostic(&self) -> String {
+        match self {
+            Self::Match {
+                tag_name,
+                mismatches,
+                matched_bases,
+                expected_bases,
+                offset,
+                scanned_offsets,
+                ..
+            } => format!(
+                "match: {tag_name}; offset={offset}; mismatches={mismatches}; overlap={matched_bases}/{expected_bases}; scanned_offsets={scanned_offsets}"
+            ),
+
+            Self::NoMatch {
+                best_mismatches,
+                best_matched_bases,
+                expected_bases,
+                scanned_offsets,
+            } => format!(
+                "no_match: best_mismatches={best_mismatches}; best_overlap={best_matched_bases}/{expected_bases}; scanned_offsets={scanned_offsets}"
+            ),
+
+            Self::MultiMatch {
+                tag_names,
+                mismatches,
+                matched_bases,
+                expected_bases,
+                scanned_offsets,
+                ..
+            } => format!(
+                "multi_match: {}; mismatches={mismatches}; overlap={matched_bases}/{expected_bases}; scanned_offsets={scanned_offsets}",
+                tag_names.join(",")
+            ),
         }
     }
 }
@@ -552,16 +595,23 @@ mod tests {
         let tag = BD_MOUSE_SAMPLE_TAGS[4];
 
         let read = concat(&[&tag[..40], b"NNNNNNNNNNNNNNNNNNN"]);
-        expect_match(mapper.call(&read), 4);
+        match mapper.call(&read) {
+            TagCall::NoMatch { .. } => {}
+            other => panic!("too short insert is accepted"),
+        }
     }
 
     #[test]
-    fn small_leading_damage_is_accepted() {
+    fn small_leading_damage_is_rejected() {
         let mapper = FastTagMapper::bd_mouse(4).unwrap();
         let tag = BD_MOUSE_SAMPLE_TAGS[4];
 
         let read = concat(&[b"NNNN", &tag[4..], b"NNNNNNNNNNNNNNNNNNN"]);
-        expect_match(mapper.call(&read), 4);
+
+        match mapper.call(&read) {
+            TagCall::NoMatch { .. } => {}
+            other => panic!("leading unknown bases before partial tag must reject, got {other:?}"),
+        }
     }
 
     #[test]
@@ -577,11 +627,11 @@ mod tests {
     }
 
     #[test]
-    fn one_or_two_mismatches_are_accepted() {
+    fn one_mismatches_are_accepted() {
         let mapper = FastTagMapper::bd_mouse(4).unwrap();
         let tag = BD_MOUSE_SAMPLE_TAGS[4];
 
-        let read = concat(&[&mutate_many(tag, &[10, 32]), b"NNNNNNNNNNNN"]);
+        let read = concat(&[&mutate_many(tag, &[10]), b"NNNNNNNNNNNN"]);
         expect_match(mapper.call(&read), 4);
     }
 

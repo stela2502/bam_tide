@@ -144,6 +144,7 @@ dependencies = [
  "bincode",
  "clap",
  "csv",
+ "fast_tag_mapper",
  "flate2",
  "gtf_splice_index",
  "mapping_info",
@@ -151,7 +152,7 @@ dependencies = [
  "rayon",
  "rust-htslib",
  "sc_primer",
- "scdata",
+ "scdata 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "snp-index",
  "stela-int-to-str 0.2.3",
@@ -546,6 +547,18 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "fast_tag_mapper"
+version = "0.1.0"
+source = "git+https://github.com/stela2502/fast_tag_mapper#209c6067d937d296bd58109f4376bb43413c5674"
+dependencies = [
+ "anyhow",
+ "clap",
+ "mapping_info",
+ "scdata 0.2.3 (git+https://github.com/stela2502/scdata)",
+ "stela-int-to-str 0.2.3",
 ]
 
 [[package]]
@@ -1176,6 +1189,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "onehot_dna"
+version = "0.1.0"
+source = "git+https://github.com/stela2502/onehot_dna#6e1a93ebe772276834ea8be08155ef9ca655fd53"
+
+[[package]]
 name = "openssl-probe"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1496,9 +1514,10 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "sc_primer"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/sc_primer#4197ae711c80a243df482b8bddf5502dd737b5ea"
+source = "git+https://github.com/stela2502/sc_primer#9db4180575c93d2597d78ea1243447112c768f46"
 dependencies = [
  "clap",
+ "onehot_dna",
 ]
 
 [[package]]
@@ -1506,6 +1525,18 @@ name = "scdata"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c7e337b7d82610d0bf7fff7c0ede56da7f878c1f90ee928ef38d8497f542945"
+dependencies = [
+ "flate2",
+ "mapping_info",
+ "rayon",
+ "regex",
+ "stela-int-to-str 0.1.0",
+]
+
+[[package]]
+name = "scdata"
+version = "0.2.3"
+source = "git+https://github.com/stela2502/scdata#bce79c3f013162503f4999723b86f2a9a3fe1cd0"
 dependencies = [
  "flate2",
  "mapping_info",
@@ -1645,7 +1676,7 @@ dependencies = [
  "gtf_splice_index",
  "mapping_info",
  "rust-htslib",
- "scdata",
+ "scdata 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

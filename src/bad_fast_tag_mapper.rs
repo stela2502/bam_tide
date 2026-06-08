@@ -408,9 +408,7 @@ fn encode_kmer(kmer: &[u8]) -> Option<u64> {
         return None;
     }
 
-    IntToStr::new(kmer.to_ascii_uppercase(), kmer.len())
-        .ok()
-        .map(|x| x.into_u64())
+    Some(IntToStr::new(kmer.to_ascii_uppercase()).into_u64())
 }
 
 pub const BD_HUMAN_SAMPLE_TAGS: [&[u8]; 12] = [

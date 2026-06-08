@@ -202,7 +202,7 @@ fn process_bam_file(
     validate_bam_header_compatible(expected_header, reader.header())
         .with_context(|| format!("BAM header mismatch for {}", bam_path.display()))?;
     let header = reader.header().clone();
-    let job_builder = JobBuilder::new(&header, chr_map)
+    let job_builder = JobBuilder::new(&header, chr_map, args.cell_tag.0, args.umi_tag.0 )
         .with_genome(genome, !args.no_genome_refine)
         .with_snp_index(snp.map(|s| &s.index))
         .with_read_tag_table( read_tag_table )

@@ -3,15 +3,20 @@ use crate::illumina_normalizer::cli::{Cli, InsertRead, PrimerRead};
 use crate::ngs_normalizer::{
     FastqPairReader, NgsNormalizerSupport, NormalizedMolecule, NormalizerPartial, CHUNK_SIZE,
 };
-use crate::read_tag_table::ReadTagTable;
+use crate::read_tag_table::{ReadTagTable,ReadTagRecord};
 
 use anyhow::{bail, Context, Result};
 use mapping_info::MappingInfo;
 use rayon::prelude::*;
 use sc_primer::{Orientation, PrimerDetector};
-use scdata::Scdata;
+use scdata::{Scdata, GeneUmiHash};
+use int_to_str::IntToStr;
 
+use std::path::Path;
 use std::path::PathBuf;
+use std::collections::HashSet;
+use fast_tag_mapper::FastTagMapper;
+
 
 #[derive(Debug, Clone)]
 pub struct IlluminaNormalizerConfig {
@@ -22,113 +27,184 @@ pub struct IlluminaNormalizerConfig {
     pub primer_read: PrimerRead,
     pub insert_read: InsertRead,
     pub primer: PrimerDetector,
-    pub feature_tags: Option<crate::tags::FastTagMapper>,
+    pub feature_tag_mapper: Option<FastTagMapper>,
     pub min_insert_len: usize,
     pub threads: usize,
     pub gzip_level: u32,
     pub gzip: bool,
 }
 
-impl IlluminaNormalizerConfig {
-    fn normalize_pair(
-        &self,
+
+pub struct IlluminaPartial {
+    pub candidates: Vec<IlluminaCandidate>,
+    pub feature_tag_table: Scdata,
+    pub stats: MappingInfo,
+}
+
+pub struct IlluminaCandidate {
+    pub dedup_key: DedupKey,
+    pub fastq_record: FastqRecord,              // exported R2 / insert
+    pub paired_r1_record: Option<FastqRecord>,
+    pub read_tag: ReadTagRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DedupKey {
+    pub cell_id: u64,
+    pub hard_umi: u64,
+}
+
+impl IlluminaPartial {
+    pub fn new() -> Self {
+        Self {
+            candidates: Vec::new(),
+            feature_tag_table: NgsNormalizerSupport::new_feature_tag_table(),
+            stats: NgsNormalizerSupport::new_stats(),
+        }
+    }
+
+    pub fn normalize_pair(
+        &mut self,
         r1: &FastqRecord,
         r2: &FastqRecord,
-        stats: &mut MappingInfo,
-        tag_counts: &mut Scdata,
-    ) -> Result<Option<NormalizedMolecule>> {
-        stats.report("total_pairs");
+        config: &IlluminaNormalizerConfig,
+    ) -> Result<()> {
+        self.stats.report("total_pairs");
 
-        let primer_source = match self.primer_read {
-            PrimerRead::R1 => r1,
-            PrimerRead::R2 => r2,
-        };
-
-        let primer_match = match self.primer.detect_first(&primer_source.seq, &primer_source.qual) {
+        let primer_match = match config.primer.detect_first(&r1.seq, &r1.qual) {
             Ok(Some(x)) => x,
             Ok(None) => {
-                stats.report("no_primer_match");
+                self.stats.report("no_primer_match");
                 bail!("no primer match");
             }
             Err(err) => {
-                stats.report("no_primer_match");
+                self.stats.report("no_primer_match");
                 bail!("primer detection failed: {err}");
             }
         };
 
-        let cell = primer_match
-            .get_cell(&primer_source.seq, &primer_source.qual)
-            .map_err(|err| {
-                stats.report("bad_cell_slice");
-                anyhow::anyhow!(err)
-            })?;
+        let cell = primer_match.get_cell(&r1.seq, &r1.qual).map_err(|err| {
+            self.stats.report("bad_cell_slice");
+            anyhow::anyhow!(err)
+        })?;
 
-        let umi = primer_match
-            .get_umi(&primer_source.seq, &primer_source.qual)
-            .map_err(|err| {
-                stats.report("bad_umi_slice");
-                anyhow::anyhow!(err)
-            })?;
+        let umi = primer_match.get_umi(&r1.seq, &r1.qual).map_err(|err| {
+            self.stats.report("bad_umi_slice");
+            anyhow::anyhow!(err)
+        })?;
 
-        let mut emitted = match self.insert_read {
-            InsertRead::Detected => primer_match
-                .get_insert(&primer_source.seq, &primer_source.qual)
-                .map(|insert| FastqRecord::new("tmp", &insert.seq, &insert.qual))
-                .map_err(|err| {
-                    stats.report("bad_insert_slice");
-                    anyhow::anyhow!(err)
-                })?,
-            InsertRead::R1 => r1.clone(),
-            InsertRead::R2 => r2.clone(),
+        let cell_id = IntToStr::new(&cell.seq).into_u64();
+        let umi_id = IntToStr::new(&umi.seq).into_u64();
+
+        if let Some(mapper) = &config.feature_tag_mapper {
+            if let Some( id ) =  mapper.map_feature_id(
+            &r2.seq,
+            &mut self.stats,
+            ) {
+
+            self.feature_tag_table.try_insert(
+                &cell_id,
+                GeneUmiHash( id as u64, umi_id),
+                1.0,
+                &mut self.stats,
+            );
+            return Ok(())
+            }
         };
 
-        if emitted.seq.len() < self.min_insert_len {
-            stats.report("short_insert");
-            bail!("emitted read is shorter than --min-insert-len");
-        }
+        let mut emitted_r2 = r2.clone();
+        emitted_r2.id = NgsNormalizerSupport::normalized_molecule_id(&r2.id, 0);
 
-        emitted.id = NgsNormalizerSupport::normalized_molecule_id(&r1.id, 0);
+        let paired_r1_record = match primer_match.get_insert(&r1.seq, &r1.qual) {
+            Ok(insert) if usable_insert(&insert.seq, 30, 0.5) => {
+                self.stats.report("paired_r1_insert_found");
+                Some(FastqRecord::new(&emitted_r2.id, &insert.seq, &insert.qual))
+            }
+            _ => {
+                self.stats.report("no_usable_paired_r1_insert");
+                None
+            }
+        };
 
-        if self.insert_read == InsertRead::Detected
-            && primer_match.orientation == Orientation::ReverseComplement
-        {
-            emitted = emitted.revcomp();
-        }
+        let cell_str = std::str::from_utf8(&cell.seq).unwrap();
+        let cell_id = IntToStr::str_to_u64(cell_str)
+            .expect("cell barcode should be <=32 bp ACGT after primer extraction");
 
-        NgsNormalizerSupport::report_orientation(stats, primer_match.orientation);
+        let mut hard_key = Vec::with_capacity(32);
+        hard_key.extend_from_slice(&umi.seq);
 
-        if NgsNormalizerSupport::maybe_collect_feature_tag(
-            self.feature_tags.as_ref(),
-            &emitted.seq,
+        let remaining = 32usize.saturating_sub(umi.seq.len());
+        hard_key.extend_from_slice(&r2.seq[..remaining.min(r2.seq.len())]);
+
+        let hard_umi_str = std::str::from_utf8(&hard_key).unwrap();
+        let hard_umi = IntToStr::str_to_u64(hard_umi_str)
+            .expect("hard UMI should be <=32 bp ACGT after construction");
+
+        let dedup_key = DedupKey { cell_id, hard_umi };
+
+        let read_tag = ReadTagRecord::new(
+            emitted_r2.id.clone(),
+            Some(r2.id.clone()),
             &cell.seq,
+            &cell.qual,
             &umi.seq,
-            tag_counts,
-            stats,
-        ) {
-            stats.report("accepted_pairs");
-            return Ok(None);
-        }
+            &umi.qual,
+        );
 
-        stats.report("accepted_pairs");
+        NgsNormalizerSupport::report_orientation(&mut self.stats, primer_match.orientation);
 
-        Ok(Some(NormalizedMolecule {
-            fastq: emitted,
-            original_read_id: Some(Self::original_read_id(r1, r2, self.primer_read)),
-            orientation: primer_match.orientation,
-            cell_seq: cell.seq.to_vec(),
-            cell_qual: cell.qual.to_vec(),
-            umi_seq: umi.seq.to_vec(),
-            umi_qual: umi.qual.to_vec(),
-        }))
-    }
+        self.candidates.push(IlluminaCandidate {
+            dedup_key,
+            fastq_record: emitted_r2,
+            paired_r1_record,
+            read_tag,
+        });
 
-    fn original_read_id(r1: &FastqRecord, r2: &FastqRecord, primer_read: PrimerRead) -> String {
-        match primer_read {
-            PrimerRead::R1 => r1.id.clone(),
-            PrimerRead::R2 => r2.id.clone(),
-        }
+        self.stats.report("candidate_pairs");
+
+        Ok(())
     }
 }
+
+fn usable_insert(seq: &[u8], min_len: usize, max_single_base_fraction: f64) -> bool {
+    if seq.len() < min_len {
+        return false;
+    }
+
+    let mut counts = [0usize; 4];
+    let mut acgt = 0usize;
+
+    for b in seq {
+        match b.to_ascii_uppercase() {
+            b'A' => {
+                counts[0] += 1;
+                acgt += 1;
+            }
+            b'C' => {
+                counts[1] += 1;
+                acgt += 1;
+            }
+            b'G' => {
+                counts[2] += 1;
+                acgt += 1;
+            }
+            b'T' => {
+                counts[3] += 1;
+                acgt += 1;
+            }
+            _ => {}
+        }
+    }
+
+    if acgt < min_len {
+        return false;
+    }
+
+    let max_count = counts.into_iter().max().unwrap_or(0);
+
+    (max_count as f64 / acgt as f64) <= max_single_base_fraction
+}
+
 
 pub struct IlluminaNormalizer {
     config: IlluminaNormalizerConfig,
@@ -156,7 +232,7 @@ impl IlluminaNormalizer {
             primer_read: cli.primer_read,
             insert_read: cli.insert_read,
             primer: cli.primer.detector().map_err(anyhow::Error::msg)?,
-            feature_tags: cli.feature_tags.mapper().map_err(anyhow::Error::msg)?,
+            feature_tag_mapper: Some(cli.feature_tags.mapper().map_err(anyhow::Error::msg)?),
             min_insert_len: cli.min_insert_len,
             threads: cli.threads,
             gzip_level: cli.gzip_level,
@@ -175,6 +251,8 @@ impl IlluminaNormalizer {
     pub fn run(&mut self) -> Result<()> {
         NgsNormalizerSupport::configure_rayon_threads(self.config.threads);
 
+        let mut seen = HashSet::<DedupKey>::new();
+
         let mut reader = FastqPairReader::from_paths(&self.config.r1, &self.config.r2)
             .with_context(|| {
                 format!(
@@ -184,29 +262,62 @@ impl IlluminaNormalizer {
                 )
             })?;
 
+        let (paired_r1_path, paired_r2_path) = self.paired_out_paths(&self.config.out);
+
+        std::fs::create_dir_all(
+            paired_r1_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(".")),
+        )?;
+
         let mut fastq = FastqWriter::new(
             &self.config.out,
             self.config.gzip,
             self.config.gzip_level,
         )
-        .with_context(|| format!("failed to create FASTQ: {}", self.config.out.display()))?;
+        .with_context(|| format!( "failed to create FASTQ: {}", self.config.out.display()))?;
+
+        let mut paired_r1 = FastqWriter::new(
+            &paired_r1_path,
+            self.config.gzip,
+            self.config.gzip_level,
+        )
+        .with_context(|| format!("failed to create paired R1 FASTQ: {}", paired_r1_path.display()))?;
+
+        let mut paired_r2 = FastqWriter::new(
+            &paired_r2_path,
+            self.config.gzip,
+            self.config.gzip_level,
+        )
+        .with_context(|| format!("failed to create paired R2 FASTQ: {}", paired_r2_path.display()))?;
 
         let mut chunk: Vec<(FastqRecord, FastqRecord)> = Vec::with_capacity(CHUNK_SIZE);
-        let mut processed_pairs = 100;
-        
+        let mut processed_pairs = 0;
+
         while let Some(pair) = reader.next_pair()? {
             chunk.push(pair);
 
             if chunk.len() >= CHUNK_SIZE {
                 processed_pairs += CHUNK_SIZE;
-                self.process_chunk(&chunk, &mut fastq)?;
+                self.process_chunk(&chunk, &mut fastq, &mut paired_r1, &mut paired_r2, &mut seen)?;
                 chunk.clear();
 
+                let total = self.stats.get_issue_count("total_pairs") as f64;
+                let written = self.stats.get_issue_count("fastq_reads_written") as f64;
+
+                let pct = if total > 0.0 {
+                    100.0 * written / total
+                } else {
+                    0.0
+                };
+
                 eprintln!(
-                    "processed {} read pairs; written {} FASTQ reads; failed {} pairs; sample-tag reads {}",
+                    "processed {} read pairs; written {} ({:.2}%) FASTQ reads; failed {} pairs; {} duplicates detected; sample-tag reads {}",
                     self.stats.get_issue_count("total_pairs"),
                     self.stats.get_issue_count("fastq_reads_written"),
-                    self.stats.get_issue_count("failed_pairs"),
+                    pct,
+                    self.stats.get_issue_count("failed_pairs"), 
+                    self.stats.get_issue_count("duplicate_molecules"),
                     self.stats.get_issue_count("feature_tag_match"),
                 );
 
@@ -215,10 +326,18 @@ impl IlluminaNormalizer {
         }
 
         if !chunk.is_empty() {
-            self.process_chunk(&chunk, &mut fastq)?;
+            self.process_chunk(
+                &chunk,
+                &mut fastq,
+                &mut paired_r1,
+                &mut paired_r2,
+                &mut seen,
+            )?;
         }
 
         fastq.finish()?;
+        paired_r1.finish()?;
+        paired_r2.finish()?;
 
         self.read_tags
             .save(&self.config.read_tags)
@@ -231,29 +350,56 @@ impl IlluminaNormalizer {
 
         NgsNormalizerSupport::write_feature_tag_table_if_present(
             &mut self.feature_tag_table,
-            self.config.feature_tags.as_ref(),
+            self.config.feature_tag_mapper.as_ref(),
             &self.config.out,
         )?;
 
         Ok(())
     }
 
+    fn paired_out_paths(&self, out: &Path) -> (PathBuf, PathBuf) {
+        let parent = out.parent().unwrap_or_else(|| Path::new("."));
+        let stem = self.fastq_stem(out);
+
+        let paired_dir = parent.join("paired");
+
+        (
+            paired_dir.join(format!("{stem}.R1.fastq.gz")),
+            paired_dir.join(format!("{stem}.R2.fastq.gz")),
+        )
+    }
+
+    fn fastq_stem(&self, path: &Path) -> String {
+        let name = path
+            .file_name()
+            .and_then(|x| x.to_str())
+            .unwrap_or("normalized");
+
+        name.strip_suffix(".fastq.gz")
+            .or_else(|| name.strip_suffix(".fq.gz"))
+            .or_else(|| name.strip_suffix(".fastq"))
+            .or_else(|| name.strip_suffix(".fq"))
+            .unwrap_or(name)
+            .to_string()
+    }
+
     fn process_chunk(
         &mut self,
         input: &[(FastqRecord, FastqRecord)],
         fastq: &mut FastqWriter,
+        paired_r1: &mut FastqWriter,
+        paired_r2: &mut FastqWriter,
+        seen: &mut HashSet<DedupKey>,
     ) -> Result<()> {
-        let config = self.config.clone();
 
-        let partials: Vec<NormalizerPartial> = input
+
+        let partials: Vec<IlluminaPartial> = input
             .par_iter()
             .map(|(r1, r2)| {
-                let mut out = NormalizerPartial::new();
+                let mut out = IlluminaPartial::new();
 
-                match config.normalize_pair(r1, r2, &mut out.stats, &mut out.feature_tag_table) {
-                    Ok(Some(molecule)) => out.push_molecule(molecule),
-                    Ok(None) => {}
-                    Err(_) => out.stats.report("failed_pairs"),
+                if out.normalize_pair(r1, r2, &self.config).is_err() {
+                    out.stats.report("failed_pairs");
                 }
 
                 out
@@ -261,12 +407,28 @@ impl IlluminaNormalizer {
             .collect();
 
         for partial in partials {
-            partial.merge_into(
-                &mut self.stats,
-                &mut self.read_tags,
-                &mut self.feature_tag_table,
-                fastq,
-            )?;
+            self.stats.merge(&partial.stats);
+            self.feature_tag_table.merge(&partial.feature_tag_table);
+
+            self.stats.stop_multi_processor_time();
+
+            for candidate in partial.candidates {
+                if seen.insert(candidate.dedup_key) {
+                    if let Some(r1) = candidate.paired_r1_record {
+                        paired_r1.write(&r1)?;
+                        paired_r2.write(&candidate.fastq_record)?;
+                        self.stats.report("paired_fastq_pairs_written");
+                    } 
+                    fastq.write(&candidate.fastq_record)?;
+                    self.stats.report("fastq_reads_written");
+                    self.read_tags.insert(candidate.read_tag);
+                    self.stats.report("accepted_pairs");
+                } else {
+                    self.stats.report("duplicate_molecules");
+                }
+            }
+            self.stats.stop_file_io_time();
+
         }
 
         Ok(())

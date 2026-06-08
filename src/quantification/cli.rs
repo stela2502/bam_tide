@@ -1,8 +1,11 @@
 //cli.rs
 // src/quantification/cli.rs
 
-use clap::{Parser, ValueEnum};
+use std::str::FromStr;
 use std::path::PathBuf;
+
+use clap::{Parser, ValueEnum};
+
 use crate::read_tag_table::ReadTagTableCli;
 
 
@@ -12,6 +15,33 @@ pub enum QuantMode {
     Gene,
     Transcript,
 }
+
+
+#[derive(Debug, Clone, Copy)]
+pub struct BamAuxTag(pub [u8; 2]);
+
+impl FromStr for BamAuxTag {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let bytes = value.as_bytes();
+
+        if bytes.len() != 2 {
+            return Err(format!(
+                "BAM aux tag '{value}' must be exactly two ASCII characters"
+            ));
+        }
+
+        if !bytes.iter().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(format!(
+                "BAM aux tag '{value}' must contain only ASCII letters/numbers"
+            ));
+        }
+
+        Ok(Self([bytes[0], bytes[1]]))
+    }
+}
+
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -108,4 +138,23 @@ pub struct QuantCli {
     /// Allowed sequencing error gap. If exceeded -> JunctionMismatch.
     #[arg(long, default_value_t = 5)]
     pub allowed_intronic_gap_size: u32,
+
+    /// BAM aux tag containing the cell barcode.
+    ///
+    /// Examples:
+    ///   CB (10x corrected)
+    ///   CR (10x raw)
+    ///   XC (custom)
+    #[arg(long, default_value = "CB")]
+    pub cell_tag: BamAuxTag,
+
+    /// BAM aux tag containing the UMI.
+    ///
+    /// Examples:
+    ///   UB (10x corrected)
+    ///   UR (10x raw)
+    ///   XM (custom)
+    #[arg(long, default_value = "UB")]
+    pub umi_tag: BamAuxTag,
+
 }

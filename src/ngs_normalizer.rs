@@ -1,13 +1,14 @@
 use crate::fastq::{record::FastqRecord, writer::FastqWriter};
-use crate::index::FastTagFeatureIndex;
 use crate::read_tag_table::{ReadTagRecord, ReadTagTable};
-use crate::tags::FastTagMapper;
+use crate::index::FastTagFeatureIndex;
 
 use anyhow::{bail, Context, Result};
 use mapping_info::MappingInfo;
 use sc_primer::Orientation;
 use scdata::cell_data::GeneUmiHash;
 use scdata::{MatrixValueType, Scdata};
+
+use fast_tag_mapper::{FastTagMapper};
 
 use std::path::{Path, PathBuf};
 
@@ -152,35 +153,6 @@ impl NgsNormalizerSupport {
         out
     }
 
-    /// Returns true when the molecule was consumed into the feature-tag table and
-    /// must therefore not be emitted as FASTQ/read-tag output.
-    pub fn maybe_collect_feature_tag(
-        mapper: Option<&FastTagMapper>,
-        insert_seq: &[u8],
-        cell_seq: &[u8],
-        umi_seq: &[u8],
-        tag_counts: &mut Scdata,
-        stats: &mut MappingInfo,
-    ) -> bool {
-        let Some(mapper) = mapper else {
-            return false;
-        };
-
-        let tag_call = mapper.call(insert_seq);
-
-        if let Some(tag_id) = tag_call.best_tag_id() {
-            let cell_id = Self::encode_sequence_id(cell_seq);
-            let umi_id = Self::encode_sequence_id(umi_seq);
-            let feature_umi = GeneUmiHash(tag_id, umi_id);
-
-            tag_counts.try_insert(&cell_id, feature_umi, 1.0, stats);
-            stats.report("feature_tag_match");
-            return true;
-        }
-
-        stats.report(tag_call.status());
-        false
-    }
 
     pub fn write_feature_tag_table_if_present(
         feature_tag_table: &mut Scdata,

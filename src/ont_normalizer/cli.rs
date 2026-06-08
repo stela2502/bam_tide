@@ -1,7 +1,8 @@
 use clap::Parser;
 use std::path::PathBuf;
 use sc_primer::PrimerCli;
-use crate::tags::cli::TagCli;
+use fast_tag_mapper::FastMapperCli;
+
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -67,7 +68,7 @@ pub struct Cli {
     pub primer: PrimerCli,
 
     #[command(flatten)]
-    pub feature_tags: TagCli,
+    pub feature_tags: FastMapperCli,
 
     #[arg(
         long,

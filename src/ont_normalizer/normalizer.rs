@@ -4,14 +4,16 @@ use crate::ngs_normalizer::{
 };
 use crate::ont_normalizer::cli::Cli;
 use crate::read_tag_table::ReadTagTable;
-use crate::tags::FastTagMapper;
+
+use fast_tag_mapper::FastTagMapper;
 
 use anyhow::{Context, Result};
 use mapping_info::MappingInfo;
 use rayon::prelude::*;
 use rust_htslib::bam::{Read, Reader};
 use sc_primer::{Orientation, PrimerDetector};
-use scdata::Scdata;
+use scdata::{Scdata, GeneUmiHash};
+use int_to_str::IntToStr;
 
 use std::path::PathBuf;
 
@@ -31,7 +33,7 @@ pub struct OntNormalizerConfig {
 }
 
 impl OntNormalizerConfig {
-    fn process_read(&self, read: &FastqRecord) -> NormalizerPartial {
+    fn process_read(&self, read: &FastqRecord ) -> NormalizerPartial {
         let mut out = NormalizerPartial::new();
         out.stats.report("total_records");
 
@@ -95,16 +97,21 @@ impl OntNormalizerConfig {
             if primer_match.orientation == Orientation::ReverseComplement {
                 insert_record = insert_record.revcomp();
             }
+            
+            let cell_id = IntToStr::new(&cell.seq).into_u64();
+            let umi_id = IntToStr::new(&umi.seq).into_u64();
 
-            if NgsNormalizerSupport::maybe_collect_feature_tag(
-                self.feature_tag_mapper.as_ref(),
-                &insert_record.seq,
-                &cell.seq,
-                &umi.seq,
-                &mut out.feature_tag_table,
-                &mut out.stats,
-            ) {
-                out.stats.report("emitted_molecules");
+
+            if let Some(mapper) = &self.feature_tag_mapper
+                && let Some(id) = mapper.map_feature_id(&insert_record.seq, &mut out.stats)
+            {
+                out.feature_tag_table.try_insert(
+                    &cell_id,
+                    GeneUmiHash(id, umi_id),
+                    1.0,
+                    &mut out.stats,
+                );
+
                 continue;
             }
 
@@ -148,7 +155,7 @@ impl OntNormalizer {
             read_tags: cli.read_tags,
             min_transcript_len: cli.min_transcript_len,
             primer: cli.primer.detector().map_err(anyhow::Error::msg)?,
-            feature_tag_mapper: cli.feature_tags.mapper().map_err(anyhow::Error::msg)?,
+            feature_tag_mapper: Some(cli.feature_tags.mapper()?),
             threads: cli.threads,
             gzip_level: cli.gzip_level,
             gzip: !cli.no_gzip,
@@ -195,7 +202,7 @@ impl OntNormalizer {
 
             if chunk.len() >= CHUNK_SIZE {
                 processed_pairs += CHUNK_SIZE;
-                self.process_chunk(&chunk, &mut fastq)?;
+                self.process_chunk(&chunk, &mut fastq )?;
                 chunk.clear();
 
                 eprintln!(
@@ -211,7 +218,7 @@ impl OntNormalizer {
         }
 
         if !chunk.is_empty() {
-            self.process_chunk(&chunk, &mut fastq)?;
+            self.process_chunk(&chunk, &mut fastq )?;
         }
 
         fastq.finish()?;
@@ -235,7 +242,7 @@ impl OntNormalizer {
 
         let partials: Vec<NormalizerPartial> = input
             .par_iter()
-            .map(|read| config.process_read(read))
+            .map(|read| config.process_read(read ))
             .collect();
 
         for partial in partials {

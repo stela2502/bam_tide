@@ -32,6 +32,10 @@ pub struct JobBuilder<'a> {
     genome: Option<&'a Genome>,
     snp: Option<&'a SnpIndex>,
     read_tag_table: Option<&'a ReadTagTable>,
+
+    cell_tag: [u8; 2],
+    umi_tag: [u8; 2],
+
     min_mapq: u8,
     read1_only: bool,
     refine_against_genome: bool,
@@ -41,6 +45,8 @@ impl<'a> JobBuilder<'a> {
     pub fn new(
         header: &'a HeaderView,
         chr_map: &'a std::collections::HashMap<String, usize>,
+        cell_tag: [u8; 2],
+        umi_tag: [u8; 2],
     ) -> Self {
         Self {
             header,
@@ -48,6 +54,8 @@ impl<'a> JobBuilder<'a> {
             genome: None,
             snp: None,
             read_tag_table: None,
+            cell_tag,
+            umi_tag,
             min_mapq: 0,
             read1_only: false,
             refine_against_genome: false,
@@ -79,6 +87,8 @@ impl<'a> JobBuilder<'a> {
         self.read1_only = read1_only;
         self
     }
+
+
 
     pub fn build(&self, rec: &Record, report: &mut MappingInfo) -> Result<Option<Job>> {
         if rec.is_unmapped() {
@@ -116,18 +126,23 @@ impl<'a> JobBuilder<'a> {
                 }
             }
         } else {
-            let cb_raw = match Self::aux_tag_str(rec, *b"CB") {
+            let cb_raw = match Self::aux_tag_str(rec, self.cell_tag ) {
                 Some(v) => v,
                 None => {
-                    report.report("no CB tag");
+                    report.report(
+                        &format!("no {} tag", String::from_utf8_lossy(&self.cell_tag))
+                    );
                     return Ok(None);
                 }
             };
 
-            let ub = match Self::aux_tag_str(rec, *b"UB") {
+            let ub = match Self::aux_tag_str(rec, self.umi_tag ) {
                 Some(v) => v,
                 None => {
-                    report.report("no UB tag");
+                    report.report(
+                        &format!("no {} tag",  
+                        String::from_utf8_lossy(&self.umi_tag))
+                    );
                     return Ok(None);
                 }
             };
@@ -164,10 +179,10 @@ impl<'a> JobBuilder<'a> {
         let chr_name = std::str::from_utf8(self.header.tid2name(tid as u32))
             .context("Invalid chromosome name in BAM header")?;
 
-        let chr_id = match self.chr_map.get(chr_name) {
-            Some(&id) => id,
+        let chr_id = match self.fuzzy_chr_id(chr_name) {
+            Some(id) => id,
             None => {
-                report.report(&format!("contig {chr_name} not in index"));
+                report.report(&format!("contig {chr_name} not in index - checked with and without chr"));
                 return Ok(None);
             }
         };
@@ -188,6 +203,52 @@ impl<'a> JobBuilder<'a> {
             spliced,
             aligned,
         }))
+    }
+
+    fn fuzzy_chr_id(&self, chr_name: &str) -> Option<usize> {
+        if let Some(&id) = self.chr_map.get(chr_name) {
+            return Some(id);
+        }
+
+        if let Some(stripped) = chr_name.strip_prefix("chr") {
+            if let Some(&id) = self.chr_map.get(stripped) {
+                return Some(id);
+            }
+
+            if stripped == "M" {
+                if let Some(&id) = self.chr_map.get("MT") {
+                    return Some(id);
+                }
+            }
+        } else {
+            let with_chr = format!("chr{chr_name}");
+
+            if let Some(&id) = self.chr_map.get(&with_chr) {
+                return Some(id);
+            }
+
+            match chr_name {
+                "MT" => {
+                    if let Some(&id) = self.chr_map.get("chrM") {
+                        return Some(id);
+                    }
+                    if let Some(&id) = self.chr_map.get("M") {
+                        return Some(id);
+                    }
+                }
+                "M" => {
+                    if let Some(&id) = self.chr_map.get("chrM") {
+                        return Some(id);
+                    }
+                    if let Some(&id) = self.chr_map.get("MT") {
+                        return Some(id);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn build_aligned_read(&self, rec: &Record, chr_name: &str) -> Option<AlignedRead> {
@@ -226,7 +287,18 @@ impl<'a> JobBuilder<'a> {
         }
     }
 
+    /// a temporary bugfid for the https://github.com/imallona/rock_roi_method
+    /// pile of crap - sorry
+    fn normalize_rock_roi(raw: &str) -> String {
+        raw.chars()
+            .filter(|c| *c != '_' && *c != '-')
+            .collect::<String>()
+    }
+
     fn dna_to_u64(seq: &str) -> Option<u64> {
+
+        let seq = Self::normalize_rock_roi( seq );
+
         if !seq.bytes().all(|b| matches!(b, b'A' | b'C' | b'G' | b'T')) {
             return None;
         }

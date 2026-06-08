@@ -1,24 +1,29 @@
 #![allow(clippy::too_many_arguments)]
-
-pub mod bed_data;
+// Core infrastructure
 pub mod cli;
-pub mod compare_report;
 pub mod core;
-pub mod data_iter;
-pub mod index;
-pub mod multi_subset_bam;
-pub mod ont_normalizer;
-pub mod results;
-pub mod read_tag_table;
-pub mod fastq;
-pub mod illumina_normalizer;
-pub mod tags;
-
-pub mod ngs_normalizer;
-
-pub mod transcriptome_to_genome;
-
 pub mod encoder;
+pub mod index;
+pub mod results;
+
+// Data structures / IO
+pub mod bed_data;
+pub mod data_iter;
+pub mod fastq;
+pub mod read_tag_table;
+//pub mod tags;
+
+// Quantification
+pub mod compare_report;
 pub mod quantification;
+
+// Normalizers
+pub mod illumina_normalizer;
+pub mod ngs_normalizer;
+pub mod ont_normalizer;
+
+// Converters / utilities
+pub mod multi_subset_bam;
+pub mod transcriptome_to_genome;
 
 pub use results::QuantData;

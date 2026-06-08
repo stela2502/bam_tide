@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
+use fast_tag_mapper::FastMapperCli;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum PrimerRead {
@@ -134,7 +135,7 @@ pub struct Cli {
     pub primer: sc_primer::PrimerCli,
 
     #[command(flatten)]
-    pub feature_tags: crate::tags::cli::TagCli,
+    pub feature_tags: FastMapperCli,
 
     #[arg(
         long,

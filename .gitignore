@@ -6,3 +6,7 @@
 *.ipynb
 /work/
 /.nextflow*
+
+flamegraph.svg
+perf.data*
+
