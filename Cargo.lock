@@ -150,6 +150,7 @@ dependencies = [
  "mapping_info",
  "rand",
  "rayon",
+ "read-tag-table",
  "rust-htslib",
  "sc_primer",
  "scdata 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1191,7 +1192,8 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "onehot_dna"
 version = "0.1.0"
-source = "git+https://github.com/stela2502/onehot_dna#6e1a93ebe772276834ea8be08155ef9ca655fd53"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe27f13dba01a2972ffcde4bfcfcc8a513cae6f0895378c0428c8d7cc03da24"
 
 [[package]]
 name = "openssl-probe"
@@ -1365,6 +1367,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-tag-table"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c300996a79e15fb5c88a0a9eb277941f86128bf15e23f62697eb625ac0afc6b"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "clap",
+ "csv",
+ "flate2",
+ "mapping_info",
+ "serde",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1513,11 +1530,14 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "sc_primer"
-version = "0.1.0"
-source = "git+https://github.com/stela2502/sc_primer#9db4180575c93d2597d78ea1243447112c768f46"
+version = "0.2.0"
+source = "git+https://github.com/stela2502/sc_primer#1090eb0228a11288f6757b925623eb00f1b3354b"
 dependencies = [
  "clap",
+ "flate2",
  "onehot_dna",
+ "read-tag-table",
+ "stela-int-to-str 0.2.3",
 ]
 
 [[package]]

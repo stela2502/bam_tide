@@ -12,7 +12,7 @@ use int_to_str::int_to_str::IntToStr;
 use mapping_info::MappingInfo;
 use snp_index::{AlignedRead, Genome, RefineOptions, SnpIndex};
 
-use crate::read_tag_table::ReadTagTable;
+use read_tag_table::ReadTagTable;
 
 #[derive(Clone)]
 pub struct Job {

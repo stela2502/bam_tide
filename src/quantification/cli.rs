@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-use crate::read_tag_table::ReadTagTableCli;
+use read_tag_table::ReadTagTableCli;
 
 
 

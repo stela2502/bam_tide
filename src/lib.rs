@@ -21,6 +21,7 @@ pub mod quantification;
 pub mod illumina_normalizer;
 pub mod ngs_normalizer;
 pub mod ont_normalizer;
+pub mod primer_restore;
 
 // Converters / utilities
 pub mod multi_subset_bam;

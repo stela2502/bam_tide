@@ -21,7 +21,7 @@ use std::fs::File;
 use std::io::Write;
 
 use bam_tide::index::{GeneFeatureIndex, TranscriptFeatureIndex};
-use bam_tide::read_tag_table::ReadTagTable;
+use read_tag_table::ReadTagTable;
 
 use bam_tide::quantification::chunk_processor::ChunkProcessor;
 use bam_tide::quantification::cli::{QuantCli, QuantMode};

@@ -1,24 +1,27 @@
 use anyhow::{bail, Context, Result};
 use flate2::read::MultiGzDecoder;
 use mapping_info::MappingInfo;
-use sc_primer::{Orientation, PrimerDetector};
+use sc_primer::{Grammar, PrimerDetector};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 
-use crate::ont_normalizer::fastq_record::FastqRecord;
-use crate::ont_normalizer::fastq_writer::FastqWriter;
-use crate::ont_normalizer::read_tag_table::{
+use crate::fastq::record::FastqRecord;
+use crate::fastq::writer::FastqWriter;
+use crate::primer_restore::cli::Cli;
+
+use read_tag_table::{
     ReadTagTable,
     ReadTagTableConfig,
     ReadTagRecord,
 };
 
+
 #[derive(Debug, Clone)]
 pub struct PrimerRestoreConfig {
     pub fastq: PathBuf,
     pub out: PathBuf,
-    pub read_tags: ReadTagTableConfig,
+    pub read_tags: ReadTagTable,
     pub primer: PrimerDetector,
     pub gzip: bool,
     pub gzip_level: u32,
@@ -38,23 +41,25 @@ impl PrimerRestore {
         }
     }
 
+    pub fn from_cli(cli: Cli) -> Result<Self> {
+        Ok(Self::new(PrimerRestoreConfig {
+            fastq: cli.fastq,
+            out: cli.out,
+            read_tags: cli.read_tags.load()?,
+            primer: cli.primer.detector().map_err(anyhow::Error::msg)?,
+            gzip: !cli.no_gzip,
+            gzip_level: cli.gzip_level,
+            die_on_error: !cli.die_on_error,
+        }))
+    }
+
     pub fn stats(&self) -> &MappingInfo {
         &self.stats
     }
 
     pub fn run(&mut self) -> Result<()> {
-        let read_tags = ReadTagTable::from_config(&self.config.read_tags)
-            .with_context(|| {
-                format!(
-                    "failed to load read-tag table: {}",
-                    self.config.read_tags.path.display()
-                )
-            })?;
-
         let mut reader = FastqReader::from_path(&self.config.fastq)
-            .with_context(|| {
-                format!("failed to open FASTQ: {}", self.config.fastq.display())
-            })?;
+            .with_context(|| format!("failed to open FASTQ: {}", self.config.fastq.display()))?;
 
         let mut writer = FastqWriter::new(
             &self.config.out,
@@ -62,40 +67,43 @@ impl PrimerRestore {
             self.config.gzip_level,
         )
         .with_context(|| {
-            format!("failed to create restored FASTQ: {}", self.config.out.display())
+            format!(
+                "failed to create restored FASTQ: {}",
+                self.config.out.display()
+            )
         })?;
 
         while let Some(record) = reader.next_record()? {
             self.stats.report("total_reads");
 
-            let Some(tag) = read_tags.get(record.id.as_str()) else {
+            let Some(tag) = self.config.read_tags.get(record.id.as_str()).cloned() else {
                 self.stats.report("missing_read_tag");
-                if self.config.die_on_error {
-                    bail!(
-                        "primer-restore encountered {errors} restore errors \
-                         and --die-on-error is active"
-                    );
-                }
                 continue;
             };
 
-            let restored = match self.restore_one(&record, tag) {
-                Ok(restored) => restored,
+            let (_target_cell, primer_seq) = match self.config.primer.generate(&tag) {
+                Ok(x) => x,
                 Err(err) => {
                     self.stats.report("primer_restore_failed");
                     eprintln!(
-                        "primer-restore: failed to restore read '{}': {err}",
+                        "primer-restore: failed to generate primer for read '{}': {err}",
                         record.id
                     );
-                    if self.config.die_on_error {
-                        bail!(
-                            "primer-restore encountered {errors} restore errors \
-                             and --die-on-error is active"
-                        );
-                    }
                     continue;
                 }
             };
+
+            let primer_qual = vec![40u8; primer_seq.len()];
+
+            let mut seq = Vec::with_capacity(primer_seq.len() + record.seq.len());
+            seq.extend_from_slice(&primer_seq);
+            seq.extend_from_slice(&record.seq);
+
+            let mut qual = Vec::with_capacity(primer_qual.len() + record.qual.len());
+            qual.extend_from_slice(&primer_qual);
+            qual.extend_from_slice(&record.qual);
+
+            let restored = FastqRecord::new(record.id.clone(), &seq, &qual);
 
             writer.write(&restored)?;
             self.stats.report("restored_reads");
@@ -103,28 +111,6 @@ impl PrimerRestore {
 
         writer.finish()?;
         self.finish_or_fail()
-    }
-
-    fn restore_one(
-        &self,
-        record: &FastqRecord,
-        tag: &ReadTagRecord,
-    ) -> Result<FastqRecord> {
-        let (_target_cell, primer) = self
-            .config
-            .primer
-            .generate(tag)
-            .with_context(|| format!("could not generate primer for {}", tag.read_id))?;
-
-        let mut seq = Vec::with_capacity(primer.seq.len() + record.seq.len());
-        seq.extend_from_slice(&primer.seq);
-        seq.extend_from_slice(&record.seq);
-
-        let mut qual = Vec::with_capacity(primer.qual.len() + record.qual.len());
-        qual.extend_from_slice(&primer.qual);
-        qual.extend_from_slice(&record.qual);
-
-        Ok(FastqRecord::new(record.id.clone(), &seq, &qual))
     }
 
     fn finish_or_fail(&self) -> Result<()> {
